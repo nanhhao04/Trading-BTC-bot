@@ -1,0 +1,10 @@
+exchange:
+  symbol: "BTCUSDT"
+  timeframe: "1h"
+
+rl_params:
+  total_timesteps: 1000000
+  learning_rate: 0.0003
+
+data:
+  window_size: 50
