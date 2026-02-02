@@ -3,139 +3,150 @@ from gymnasium import spaces
 import numpy as np
 import pandas as pd
 
+# Import các module bạn đã viết
+from DQN.action_dqn import ActionDQN
+from PPO.action_ppo import ActionPPO
+from reward import RewardHandler
 
-class TradingEnv(gym.Env):
-    """
-    Môi trường giao dịch giả lập (Trading Environment)
-    Kế thừa từ gymnasium.Env để tương thích với Stable-Baselines3
-    """
 
-    def __init__(self, df, initial_balance=1000, commission_fee=0.0004):
-        super(TradingEnv, self).__init__()
+class BitcoinTradingEnv(gym.Env):
+    metadata = {'render_modes': ['human']}
 
-        self.df = df.reset_index(drop=True)
+    def __init__(self, df_full, df_state, model_type='DQN', initial_balance=10000, fee_rate=0.0004):
+        super(BitcoinTradingEnv, self).__init__()
+
+        self.df_full = df_full.reset_index(drop=True)
+        self.df_state = df_state.reset_index(drop=True)
+        self.model_type = model_type
         self.initial_balance = initial_balance
-        self.commission_fee = commission_fee  # 0.04% (Phí taker sàn Binance)
+        self.fee_rate = fee_rate
 
-        # --- 1. ACTION SPACE (Không gian hành động) ---
-        # 0: Hold (Giữ nguyên)
-        # 1: Buy (Mua toàn bộ tiền đang có)
-        # 2: Sell (Bán toàn bộ coin đang có)
-        self.action_space = spaces.Discrete(3)
+        # --- 1. Cấu hình Action Space ---
+        if model_type == 'DQN':
+            # 0: Wait, 1: Long, 2: Short, 3: Close
+            self.action_space = spaces.Discrete(4)
+            self.action_handler = ActionDQN(fee_rate=fee_rate)
+            # DQN dùng biến rời rạc: 0 (Neutral), 1 (Long), -1 (Short)
+            self.pos_tracker = 0
 
-        # --- 2. OBSERVATION SPACE (Không gian quan sát) ---
-        # Bot sẽ nhìn thấy các chỉ số kỹ thuật (RSI, MACD...) trừ các cột không cần thiết
-        self.ignore_cols = ['date', 'timestamp', 'open', 'high', 'low', 'volume']
-        self.feature_cols = [c for c in df.columns if c not in self.ignore_cols]
+            # Cấu hình Reward cho DQN (Phạt nặng rủi ro)
+            self.reward_handler = RewardHandler(scaling=10.0, alpha=1.0, beta=0.5)
 
-        # Khai báo kích thước dữ liệu đầu vào cho Bot
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(len(self.feature_cols),), dtype=np.float32
-        )
+        elif model_type == 'PPO':
+            # [-1, 1]: Tỷ trọng vốn
+            self.action_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+            self.action_handler = ActionPPO(fee_rate=fee_rate)
+            # PPO dùng biến liên tục: -1.0 đến 1.0
+            self.pos_tracker = 0.0
+
+            # Cấu hình Reward cho PPO (Thưởng lớn để Gradient rõ)
+            self.reward_handler = RewardHandler(scaling=100.0, alpha=0.5, beta=0.2)
+
+        # --- 2. Cấu hình Observation Space ---
+        # State gồm 6 đặc trưng: Norm_Close, RSI14, Volatility, MACD, SMA_Dist, I_trend
+        # Cộng thêm 2 thông tin về vị thế hiện tại: [Current_Pos, Unrealized_PnL_Percent]
+        # Tổng = 8 features
+        self.obs_shape = (self.df_state.shape[1] + 2,)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=self.obs_shape, dtype=np.float32)
 
     def reset(self, seed=None, options=None):
-        """
-        Hàm reset môi trường về trạng thái ban đầu để bắt đầu lượt chơi mới (Episode)
-        """
         super().reset(seed=seed)
 
+        # Reset các biến tài khoản
+        self.balance = self.initial_balance
+        self.net_worth = self.initial_balance
         self.current_step = 0
-        self.balance = self.initial_balance  # Tiền mặt (USDT)
-        self.shares_held = 0  # Số lượng Coin nắm giữ
-        self.net_worth = self.initial_balance  # Tổng tài sản = Tiền + (Coin * Giá)
-        self.max_net_worth = self.initial_balance
 
-        return self._next_observation(), {}
+        # Reset tracker vị thế
+        if self.model_type == 'DQN':
+            self.pos_tracker = 0
+        else:
+            self.pos_tracker = 0.0
 
-    def _next_observation(self):
-        """
-        Lấy dữ liệu thị trường tại thời điểm hiện tại để đưa cho Bot xem
-        """
-        obs = self.df.iloc[self.current_step][self.feature_cols].values
-        return obs.astype(np.float32)
+        # Reset Reward Handler
+        self.reward_handler.reset(self.initial_balance)
+
+        return self._get_observation(), {}
 
     def step(self, action):
-        """
-        Thực hiện hành động và trả về kết quả (Reward)
-        """
-        # Lấy giá hiện tại (Close price)
-        current_price = self.df.iloc[self.current_step]['close']
+        # 1. Lấy dữ liệu thị trường hiện tại
+        current_price = self.df_full.loc[self.current_step, 'close']
+        # Lấy giá bước trước để tính PnL thay đổi (nếu cần) hoặc dùng logic Reward
+        prev_price = self.df_full.loc[self.current_step - 1, 'close'] if self.current_step > 0 else current_price
 
-        # --- XỬ LÝ HÀNH ĐỘNG ---
-        # Action 1: BUY (Chỉ mua nếu đang cầm Tiền và chưa cầm Coin)
-        if action == 1 and self.balance > 0:
-            amount_to_invest = self.balance
-            # Trừ phí giao dịch
-            fee = amount_to_invest * self.commission_fee
-            # Tính số coin mua được
-            self.shares_held = (amount_to_invest - fee) / current_price
-            self.balance = 0  # Đã tiêu hết tiền vào coin
+        trend_flag = self.df_state.loc[self.current_step, 'I_trend']
 
-        # Action 2: SELL (Chỉ bán nếu đang cầm Coin)
-        elif action == 2 and self.shares_held > 0:
-            # Quy đổi coin ra tiền
-            amount_received = self.shares_held * current_price
-            # Trừ phí giao dịch
-            fee = amount_received * self.commission_fee
-            self.balance += amount_received - fee
-            self.shares_held = 0  # Đã bán hết coin
+        # 2. Thực hiện hành động (Qua Action Handler)
+        # Handler sẽ tính toán vị thế mới và phí
+        if self.model_type == 'DQN':
+            new_pos, fee_rate, executed = self.action_handler.step(action, self.pos_tracker, current_price)
+            trade_type_str = self.action_handler.get_action_name(action)
+        else:  # PPO
+            # Action của PPO là array, lấy phần tử đầu tiên
+            new_pos, fee_rate, trade_type_str = self.action_handler.step(action[0], self.pos_tracker, current_price)
 
-        # Action 0: Hold (Không làm gì, giữ nguyên trạng thái)
+        # 3. Tính toán tiền nong (Balance & Net Worth)
+        # Phí giao dịch trừ thẳng vào Net Worth
+        # fee_rate trả về từ handler là % trên khối lượng giao dịch.
+        # Cần quy đổi ra tiền: Fee_money = Volume_Trade * Fee_rate
+        # Ở đây giả lập đơn giản: Fee trừ trực tiếp vào Net Worth theo tỷ lệ tài sản tham gia
 
-        # --- CẬP NHẬT TRẠNG THÁI ---
+        # Tính chi phí giao dịch bằng tiền
+        # Ước lượng: fee_money = net_worth * fee_rate (fee_rate đã tính dựa trên delta ở handler)
+        fee_cost = self.net_worth * fee_rate
+        self.net_worth -= fee_cost
+
+        # Cập nhật thay đổi tài sản do giá biến động (Mark-to-Market)
+        # PnL = % thay đổi giá * tỷ trọng vị thế * Tổng tài sản
+        price_change_pct = (current_price - prev_price) / prev_price
+        pnl = self.net_worth * self.pos_tracker * price_change_pct
+        self.net_worth += pnl
+
+        # Cập nhật vị thế mới
+        self.pos_tracker = new_pos
+
+        # 4. Tính Reward
+        reward, reward_info = self.reward_handler.calculate(
+            net_worth=self.net_worth,
+            current_price=current_price,
+            past_price=prev_price,
+            position=self.pos_tracker,
+            action_type=trade_type_str,
+            trend_flag=trend_flag
+        )
+
+        # 5. Chuyển bước tiếp theo
         self.current_step += 1
+        done = self.current_step >= len(self.df_full) - 1
 
-        # Kiểm tra xem đã đi hết dữ liệu chưa
-        terminated = self.current_step >= len(self.df) - 1
-        truncated = False
+        # Điều kiện dừng sớm: Cháy tài khoản (còn dưới 50% vốn)
+        if self.net_worth < self.initial_balance * 0.5:
+            done = True
+            reward = -100  # Phạt cực nặng nếu cháy
 
-        # --- TÍNH TOÁN PHẦN THƯỞNG (REWARD) ---
-        # Tổng tài sản hiện tại
-        new_net_worth = self.balance + (self.shares_held * self.df.iloc[self.current_step]['close'])
+        obs = self._get_observation()
 
-        # Reward = Tiền lãi kiếm được trong bước này
-        # Nếu lãi dương -> Thưởng, Lãi âm (Lỗ) -> Phạt
-        reward = new_net_worth - self.net_worth
+        info = {
+            'net_worth': self.net_worth,
+            'step_reward': reward,
+            'action': trade_type_str,
+            'position': self.pos_tracker
+        }
 
-        # Cập nhật net_worth cho bước sau
-        self.net_worth = new_net_worth
+        return obs, reward, done, False, info
 
-        # Thông tin thêm để debug
-        info = {'net_worth': self.net_worth, 'step': self.current_step}
+    def _get_observation(self):
+        # Lấy state từ file csv đã chuẩn hóa
+        market_state = self.df_state.iloc[self.current_step].values
 
-        return self._next_observation(), reward, terminated, truncated, info
+        # Thêm thông tin tài khoản vào state để Bot biết mình đang Long hay Short
+        account_state = np.array([
+            self.pos_tracker,  # Vị thế hiện tại
+            (self.net_worth - self.initial_balance) / self.initial_balance  # Lợi nhuận tích lũy (%)
+        ])
+
+        return np.concatenate((market_state, account_state)).astype(np.float32)
 
     def render(self, mode='human'):
-        """
-        Hàm in ra màn hình để theo dõi (Optional)
-        """
-        print(f"Step: {self.current_step}, Net Worth: {self.net_worth:.2f}")
-
-
-# --- CHẠY THỬ ĐỂ KIỂM TRA (Unit Test) ---
-if __name__ == "__main__":
-    try:
-        # Load dữ liệu đã xử lý
-        df = pd.read_csv("../data/processed/BTCUSDT_1h_features.csv")
-
-        # Khởi tạo môi trường
-        env = TradingEnv(df)
-
-        # Reset môi trường
-        obs, _ = env.reset()
-        print("🔍 Môi trường khởi tạo thành công!")
-        print(f"   - Action Space: {env.action_space}")
-        print(f"   - Observation Shape: {obs.shape}")
-
-        # Thử chạy 10 bước ngẫu nhiên
-        print("\n▶️ Chạy thử 10 bước ngẫu nhiên:")
-        for _ in range(10):
-            action = env.action_space.sample()  # Chọn hành động bừa (0, 1 hoặc 2)
-            obs, reward, done, _, info = env.step(action)
-            print(f"   Action: {action} | Reward: {reward:.4f} | Net Worth: {info['net_worth']:.2f}")
-            if done: break
-
-        print("\n✅ Môi trường hoạt động TỐT! Sẵn sàng để Train.")
-
-    except FileNotFoundError:
-        print("❌ Lỗi: Không tìm thấy file data processed. Hãy chạy 'features.py' trước!")
+        if self.current_step % 100 == 0:
+            print(f"Step: {self.current_step}, Net Worth: {self.net_worth:.2f}, Pos: {self.pos_tracker}")

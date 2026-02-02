@@ -1,10 +1,54 @@
-exchange:
-  symbol: "BTCUSDT"
-  timeframe: "1h"
 
-rl_params:
-  total_timesteps: 1000000
+project_name: "Bitcoin_RL_Trader"
+model_type: "PPO"  # Chọn: "PPO" hoặc "DQN"
+seed: 42
+
+system:
+  device: "cpu"  # Chọn: "cuda" (GPU), "cpu", hoặc "auto"
+  n_envs: 4
+
+paths:
+  data_full: "../data/processed/BTCUSDT_1h_features_full.csv"
+  data_state: "../data/processed/BTCUSDT_1h_state.csv"
+  models_dir: "../model"
+  logs_dir: "../tensorboard_logs"
+
+
+env:
+  initial_balance: 10000
+  fee_rate: 0.0004       # 0.04% (Binance VIP 0)
+  window_size: 50        # Số nến dùng cho Z-score (đã dùng lúc pre-process)
+
+# --- HYPERPARAMETERS CHO PPO ---
+ppo_params:
+  policy: "MlpPolicy"
   learning_rate: 0.0003
+  n_steps: 2048          # Số bước chạy trước khi update model
+  batch_size: 128
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01         # Tăng lên nếu bot quá lười trade (khuyến khích khám phá)
+  verbose: 1
 
-data:
-  window_size: 50
+# HYPERPARAMETERS CHO DQN
+dqn_params:
+  policy: "MlpPolicy"
+  learning_rate: 0.0001
+  buffer_size: 100000    # Bộ nhớ replay buffer
+  learning_starts: 1000  # Số bước random lúc đầu để lấp đầy buffer
+  batch_size: 32
+  tau: 1.0
+  gamma: 0.99
+  train_freq: 4
+  gradient_steps: 1
+  target_update_interval: 1000
+  exploration_fraction: 0.1
+  exploration_final_eps: 0.05
+  verbose: 1
+
+
+training:
+  total_timesteps: 1000000
+  save_interval: 50000   # Lưu model sau mỗi 50k bước

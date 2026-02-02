@@ -1,15 +1,7 @@
-# 📉 Deep Reinforcement Learning for Bitcoin Trading: Mathematical Foundation & Implementation
+# Deep Reinforcement Learning for Bitcoin Trading: Mathematical Foundation & Implementation
 
 **Technical Reference for AI Engineers** **Based on:** *Prasetyo et al., 2025* **Topic:** Optimal Control in Non-Stationary Financial Markets (High-Frequency Crypto Trading).
 
----
-
-## 📑 Table of Contents
-1. [Vấn đề Cốt lõi: Tính Không Dừng (Non-Stationarity)](#1-vấn-đề-cốt-lõi-tính-không-dừng-non-stationarity)
-2. [Feature Engineering: Xử lý Tín hiệu & Chuẩn hóa](#2-feature-engineering-xử-lý-tín-hiệu--chuẩn-hóa)
-3. [Reward Shaping: Hàm Mục Tiêu Đa Biến](#3-reward-shaping-hàm-mục-tiêu-đa-biến)
-4. [Algorithm Dynamics: Toán học của DQN vs PPO](#4-algorithm-dynamics-toán-học-của-dqn-vs-ppo)
-5. [Implementation Checklist](#5-implementation-checklist)
 
 ---
 
@@ -95,22 +87,3 @@ $$L^{CLIP} = \mathbb{E} [ \min(r_t A_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon)
 * **Hành vi:** PPO trade rất nhiều, thắng lớn khi có Trend mạnh, nhưng thua lỗ nặng khi thị trường đảo chiều (Mean Reversion). **Phù hợp cho Momentum Trading.**
 
 ---
-
-## 5. Implementation Checklist
-
-Để tái hiện (reproduce) thành công bài báo này, Codebase cần đảm bảo:
-
-- [ ] **Preprocessing:**
-    - [ ] Cài đặt `RollingWindow` để tính Z-Score (không dùng Global Mean).
-    - [ ] Tính `SMA200` để tạo feature `trend_flag`.
-- [ ] **Environment (Gym):**
-    - [ ] `step()` function phải trả về `info` chứa Drawdown hiện tại.
-    - [ ] Implement hàm reward tổng hợp (Unrealized + Realized - Penalty).
-- [ ] **Agent Config (Stable-Baselines3):**
-    - [ ] **DQN:** Sử dụng `exploration_fraction=0.1` (giảm explore khi deploy), `huber_loss`.
-    - [ ] **PPO:** Tăng `ent_coef` (Entropy coefficient) nếu Agent bị kẹt (không chịu trade), hoặc giảm nếu trade quá nhiều.
-- [ ] **Safety Layer:**
-    - [ ] Hard-code quy tắc: Nếu `Close < SMA200`, giảm `max_position_size` xuống 50%.
-
----
-*Document prepared by Gemini specifically for AI Engineering usage.*

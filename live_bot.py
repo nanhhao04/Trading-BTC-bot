@@ -4,9 +4,7 @@ import time
 from dotenv import load_dotenv
 import os
 
-# =========================
-# CẤU HÌNH
-# =========================
+
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")

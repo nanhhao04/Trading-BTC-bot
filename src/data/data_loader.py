@@ -81,7 +81,7 @@ def get_binance_data(symbol, interval, start_str, end_str=None):
     df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
 
     # Lưu ra file CSV
-    output_path = f"../data/raw/{symbol}_{interval}.csv"
+    output_path = f"../../data/raw/{symbol}_{interval}.csv"
 
     # Tạo thư mục nếu chưa có
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -92,9 +92,8 @@ def get_binance_data(symbol, interval, start_str, end_str=None):
 
 
 if __name__ == "__main__":
-    # === CẤU HÌNH TẢI DỮ LIỆU TẠI ĐÂY ===
     SYMBOL = "BTCUSDT"
-    TIMEFRAME = "1h"  # 1h là khung tốt để bắt đầu train (không quá nhiễu như 1m, 5m)
-    START_DATE = "01/01/2023"  # Lấy 2 năm dữ liệu để train cho chắc
+    TIMEFRAME = "1h"
+    START_DATE = "01/01/2023"
 
     get_binance_data(SYMBOL, TIMEFRAME, START_DATE)

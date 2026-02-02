@@ -1,0 +1,4 @@
+ta
+stable-baselines3[extra]
+gymnasium
+shimmy
