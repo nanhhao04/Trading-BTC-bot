@@ -42,10 +42,8 @@ class BitcoinTradingEnv(gym.Env):
             # Cấu hình Reward cho PPO (Thưởng lớn để Gradient rõ)
             self.reward_handler = RewardHandler(scaling=100.0, alpha=0.5, beta=0.2)
 
-        # --- 2. Cấu hình Observation Space ---
-        # State gồm 6 đặc trưng: Norm_Close, RSI14, Volatility, MACD, SMA_Dist, I_trend
-        # Cộng thêm 2 thông tin về vị thế hiện tại: [Current_Pos, Unrealized_PnL_Percent]
-        # Tổng = 8 features
+        # Cấu hình Observation Space
+        # Tổng = 8 features ( 6 + 2 )
         self.obs_shape = (self.df_state.shape[1] + 2,)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=self.obs_shape, dtype=np.float32)
 
@@ -86,17 +84,9 @@ class BitcoinTradingEnv(gym.Env):
             new_pos, fee_rate, trade_type_str = self.action_handler.step(action[0], self.pos_tracker, current_price)
 
         # 3. Tính toán tiền nong (Balance & Net Worth)
-        # Phí giao dịch trừ thẳng vào Net Worth
-        # fee_rate trả về từ handler là % trên khối lượng giao dịch.
-        # Cần quy đổi ra tiền: Fee_money = Volume_Trade * Fee_rate
-        # Ở đây giả lập đơn giản: Fee trừ trực tiếp vào Net Worth theo tỷ lệ tài sản tham gia
-
-        # Tính chi phí giao dịch bằng tiền
-        # Ước lượng: fee_money = net_worth * fee_rate (fee_rate đã tính dựa trên delta ở handler)
         fee_cost = self.net_worth * fee_rate
         self.net_worth -= fee_cost
 
-        # Cập nhật thay đổi tài sản do giá biến động (Mark-to-Market)
         # PnL = % thay đổi giá * tỷ trọng vị thế * Tổng tài sản
         price_change_pct = (current_price - prev_price) / prev_price
         pnl = self.net_worth * self.pos_tracker * price_change_pct

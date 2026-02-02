@@ -1,5 +1,6 @@
 # Các chỉ số quan trọng trong Trading Crypto (BTC, Altcoins)
 
+#### Trong mô hình này sử dụng các tham số cho không gian state :  Norm_Close, RSI14, Volatility, MACD, SMA_Dist, I_trend và Cộng thêm 2 thông tin về vị thế hiện tại: [Current_Pos, Unrealized_PnL_Percent]
 Trong giao dịch Crypto, nhà đầu tư và các hệ thống AI/RL thường sử dụng nhiều chỉ số để đánh giá:
 
 ---
@@ -218,7 +219,7 @@ $$
 
 ---
 
-## Tổng kết: Các chỉ số bạn bắt buộc phải biết
+## Tổng kết: Các chỉ số 
 
 | Nhóm | Chỉ số quan trọng |
 |------|------------------|
@@ -233,10 +234,3 @@ $$
 
 ---
 
-Nếu bạn làm dự án **RL trading BTC**, nên tập trung nhất vào:
-
-- Log-return
-- Volatility
-- Transaction cost
-- Sharpe ratio reward
-- Max Drawdown penalty

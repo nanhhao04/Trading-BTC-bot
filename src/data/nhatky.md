@@ -14,6 +14,6 @@ BASE_URL = "https://testnet.binancefuture.com"
 - Tính toan các trường dữ liệu RSI14, MACD, ATR, SMA50-200, logReturn.
 - Các trường dữ liệu nâng cao hơn: 
   - Z-score, 
-  - TrendFlag(1: Uptrend (An toàn để Long), 0: Downtrend (Nguy hiểm)), 
-  - Distance to SMA (Đo xem giá đã đi quá xa đường trung bình chưa (Overbought/Oversold)
+  - TrendFlag(1: Uptrend, 0: Downtrend), 
+  - Distance to SMA (Đo xem giá đã đi xa đường trung bình chưa 
   - vol_change: volume hiện tại so với trung bình volume 20 phiên.

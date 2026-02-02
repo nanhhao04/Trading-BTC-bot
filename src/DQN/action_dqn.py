@@ -8,36 +8,23 @@ class ActionDQN:
         self.action_map = {0: 'WAIT', 1: 'LONG', 2: 'SHORT', 3: 'CLOSE'}
 
     def step(self, action_id, current_pos, current_price):
-        """
-        Thực hiện hành động và trả về vị thế mới + phí giao dịch.
-
-        Args:
-            action_id (int): 0, 1, 2, 3
-            current_pos (int): 0 (Neutral), 1 (Long), -1 (Short)
-            current_price (float): Giá hiện tại
-
-        Returns:
-            new_pos (int): Vị thế mới (0, 1, -1)
-            fee (float): Phí giao dịch phát sinh (theo % giá trị lệnh)
-            executed (bool): Có giao dịch thực sự diễn ra không?
-        """
         new_pos = current_pos
         fee = 0.0
         executed = False
 
-        # --- ACTION 1: LONG ---
+        # ACTION 1: LONG
         if action_id == 1:
-            if current_pos == 0:  # Neutral -> Long
+            if current_pos == 0:
                 new_pos = 1
-                fee = self.fee_rate  # Phí mở
+                fee = self.fee_rate
                 executed = True
-            elif current_pos == -1:  # Short -> Long (Đảo chiều)
+            elif current_pos == -1:
                 new_pos = 1
-                fee = self.fee_rate * 2  # Phí đóng Short + Phí mở Long
+                fee = self.fee_rate * 2
                 executed = True
-            # Nếu đang Long (1) -> Giữ nguyên, không mất phí
 
-        # --- ACTION 2: SHORT ---
+
+        # ACTION 2: SHORT
         elif action_id == 2:
             if current_pos == 0:  # Neutral -> Short
                 new_pos = -1
@@ -49,7 +36,7 @@ class ActionDQN:
                 executed = True
             # Nếu đang Short (-1) -> Giữ nguyên
 
-        # --- ACTION 3: CLOSE (Take Profit / Cut Loss) ---
+        #  ACTION 3: CLOSE (Take Profit / Cut Loss)
         elif action_id == 3:
             if current_pos != 0:  # Đang có lệnh -> Đóng
                 new_pos = 0
