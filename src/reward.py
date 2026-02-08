@@ -2,11 +2,12 @@ import numpy as np
 
 
 class RewardHandler:
-    def __init__(self, scaling, alpha, beta):
+    def __init__(self, scaling, alpha, beta, holding_penalty):
 
         self.scaling = scaling
         self.alpha = alpha
         self.beta = beta
+        self.holding_penalty = holding_penalty
 
         # Theo dõi đỉnh tài sản để tính Drawdown
         self.max_net_worth = 0.0
@@ -29,13 +30,15 @@ class RewardHandler:
         log_return = np.log(current_price / past_price)
         step_reward = position * log_return
 
+        risk_cost = abs(position) * self.holding_penalty
+
         # Realized Reward (Thưởng khi Chốt lời/Cắt lỗ)
         realized_reward = 0.0
         if action_type in ['CLOSE', 'SELL'] and position > 0:
             pass
 
         # Drawdown Penalty (Phạt sụt giảm) - QUAN TRỌNG NHẤT
-        current_dd = (self.max_net_worth - net_worth) / self.max_net_worth
+        current_dd = (self.max_net_worth - net_worth - risk_cost) / self.max_net_worth
         dd_penalty = self.beta * current_dd
 
         # Trend Scaling (Điều chỉnh theo xu hướng)

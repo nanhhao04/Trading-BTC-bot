@@ -12,8 +12,6 @@ import gymnasium as gym
 from env import BitcoinTradingEnv
 
 
-
-
 def load_config():
     with open('../config.yaml', 'r', encoding='utf-8') as f: # Thêm encoding='utf-8'
         return yaml.safe_load(f)
@@ -38,11 +36,6 @@ def main():
     # 1. Load Config
     cfg = load_config()
     device = cfg['system'].get('device', 'auto')
-
-    # Kiểm tra xem có GPU thật không
-    #if device == "cuda" and not torch.cuda.is_available():
-     #   print("CẢNH BÁO: Bạn chọn 'cuda' nhưng không tìm thấy GPU. Chuyển về 'cpu'.")
-      #  device = "cpu"
     print(f"Training on DEVICE: {device.upper()}")
 
     # 2. Load Dữ liệu
@@ -54,8 +47,6 @@ def main():
     df_full = df_full.iloc[:min_len]
     df_state = df_state.iloc[:min_len]
 
-    # 3. Khởi tạo ĐA MÔI TRƯỜNG (Vectorized Environment)
-    # Đây là chìa khóa để GPU chạy nhanh: Chạy 4-8 env cùng lúc
     n_envs = cfg['system'].get('n_envs', 1)
     print(f"Creating {n_envs} parallel environments...")
 

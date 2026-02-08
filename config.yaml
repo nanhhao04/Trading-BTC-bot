@@ -2,6 +2,10 @@
 project_name: "Bitcoin_RL_Trader"
 model_type: "PPO"  # Chọn: "PPO" hoặc "DQN"
 seed: 42
+leverage: 20
+max_capital_usage: 0.01
+symbol: "BTCUSDT"
+timeframes: "1h"
 
 system:
   device: "cpu"  # Chọn: "cuda" (GPU), "cpu", hoặc "auto"
@@ -11,13 +15,15 @@ paths:
   data_full: "../data/processed/BTCUSDT_1h_features_full.csv"
   data_state: "../data/processed/BTCUSDT_1h_state.csv"
   models_dir: "../model"
+  ppo_dir: "../model/PPO_Bitcoin_RL_Trader/final_model.zip"
+  dqn_dir: "../model/.."
   logs_dir: "../tensorboard_logs"
 
 
 env:
   initial_balance: 10000
   fee_rate: 0.0004       # 0.04% (Binance VIP 0)
-  window_size: 50        # Số nến dùng cho Z-score (đã dùng lúc pre-process)
+  window_size: 300        # Số nến dùng cho Z-score (đã dùng lúc pre-process)
 
 # --- HYPERPARAMETERS CHO PPO ---
 ppo_params:

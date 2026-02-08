@@ -24,6 +24,3 @@ class ActionPPO:
 
         return target_pct, fee_pct, trade_type
 
-    def normalize_action(self, action):
-        # Hàm tiện ích nếu cần unscale (thường PPO tự xử lý Tanh ra -1 đến 1 rồi)
-        return np.clip(action, -1, 1)
