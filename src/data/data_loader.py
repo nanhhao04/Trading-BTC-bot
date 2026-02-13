@@ -78,7 +78,7 @@ def get_binance_data(symbol, interval, start_str, end_str=None):
 
 if __name__ == "__main__":
     SYMBOL = "BTCUSDT"
-    TIMEFRAME = "1h"
+    TIMEFRAME = "15m"
     START_DATE = "01/01/2023"
 
     get_binance_data(SYMBOL, TIMEFRAME, START_DATE)

@@ -20,6 +20,9 @@ class BitcoinTradingEnv(gym.Env):
         self.model_type = model_type
         self.initial_balance = initial_balance
         self.fee_rate = fee_rate
+        self.long_count = 0
+        self.short_count = 0
+        self.flat_count = 0
 
         # --- 1. Cấu hình Action Space ---
         if model_type == 'DQN':
@@ -30,17 +33,17 @@ class BitcoinTradingEnv(gym.Env):
             self.pos_tracker = 0
 
             # Cấu hình Reward cho DQN (Phạt nặng rủi ro)
-            self.reward_handler = RewardHandler(scaling=10.0, alpha=0.1, beta=0.3, holding_penalty= 0.02)
+            self.reward_handler = RewardHandler(scaling=20, alpha=0.4, beta=0.08, holding_penalty= 0.0015)
 
         elif model_type == 'PPO':
             # [-1, 1]: Tỷ trọng vốn
-            self.action_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+            self.action_space = spaces.Box(low=-3, high=3, shape=(1,), dtype=np.float32)
             self.action_handler = ActionPPO(fee_rate=fee_rate)
             # PPO dùng biến liên tục: -1.0 đến 1.0
             self.pos_tracker = 0.0
 
             # Cấu hình Reward cho PPO (Thưởng lớn để Gradient rõ)
-            self.reward_handler = RewardHandler(scaling=10.0, alpha=0.1, beta=0.3, holding_penalty= 0.02)
+            self.reward_handler = RewardHandler(scaling=20, alpha=0.4, beta=0.08, holding_penalty= 0.0015)
 
         # Cấu hình Observation Space
         # Tổng = 8 features ( 6 + 2 )
@@ -81,6 +84,7 @@ class BitcoinTradingEnv(gym.Env):
             trade_type_str = self.action_handler.get_action_name(action)
         else:  # PPO
             # Action của PPO là array, lấy phần tử đầu tiên
+            action = np.tanh(action)
             new_pos, fee_rate, trade_type_str = self.action_handler.step(action[0], self.pos_tracker, current_price)
 
         # 3. Tính toán tiền nong (Balance & Net Worth)
@@ -94,6 +98,12 @@ class BitcoinTradingEnv(gym.Env):
 
         # Cập nhật vị thế mới
         self.pos_tracker = new_pos
+        if self.pos_tracker > 0.05:
+            self.long_count += 1
+        elif self.pos_tracker < -0.05:
+            self.short_count += 1
+        else:
+            self.flat_count += 1
 
         # 4. Tính Reward
         reward, reward_info = self.reward_handler.calculate(
@@ -122,6 +132,18 @@ class BitcoinTradingEnv(gym.Env):
             'action': trade_type_str,
             'position': self.pos_tracker
         }
+
+        if done:
+            total = self.long_count + self.short_count + self.flat_count
+            print("\n===== POSITION STATS =====")
+            print(f"Long  : {self.long_count / total:.2%}")
+            print(f"Short : {self.short_count / total:.2%}")
+            print(f"Flat  : {self.flat_count / total:.2%}")
+            print("==========================\n")
+
+            self.long_count = 0
+            self.short_count = 0
+            self.flat_count = 0
 
         return obs, reward, done, False, info
 

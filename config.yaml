@@ -3,9 +3,9 @@ project_name: "Bitcoin_RL_Trader"
 model_type: "PPO"  # Chọn: "PPO" hoặc "DQN"
 seed: 42
 leverage: 20
-max_capital_usage: 0.01
+max_capital_usage: 0.05
 symbol: "BTCUSDT"
-timeframes: "1h"
+timeframes: "15m"
 
 system:
   device: "cpu"  # Chọn: "cuda" (GPU), "cpu", hoặc "auto"
@@ -56,5 +56,5 @@ dqn_params:
 
 
 training:
-  total_timesteps: 1000000
-  save_interval: 50000   # Lưu model sau mỗi 50k bước
+  total_timesteps: 1200000
+  save_interval: 150000   # Lưu model sau mỗi 50k bước

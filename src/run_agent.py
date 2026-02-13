@@ -138,6 +138,7 @@ def main():
                 # Log
                 print(f"\n{datetime.now().strftime('%H:%M:%S')} | Price: {current_price:.2f}")
                 print(f"State: RSI={obs[1]:.2f} | Trend={obs[5]:.0f} | Pos={obs[6]:.2f}")
+                logger.info(f" OBS: {obs[0]:.4f}, {obs[1]:.4f}, {obs[2]:.4f} ...")
 
                 # 4. Dự đoán
                 action, _ = model.predict(obs, deterministic=True)     # deterministic true là dùng mean của gaus
@@ -149,13 +150,22 @@ def main():
                     executor.execute_dqn(act_int)
 
                 elif MODEL_TYPE == "PPO":
-                    target_pct = action[0]
+                    #target_pct = action[0]
+                    print(f"raw action: {action[0]}")
+
+                    if isinstance(action, np.ndarray):
+                        action = float(action.item())
+                    else:
+                        action = float(action)
+
+                    target_pct = np.tanh(action)
+
                     logger.info(f"PPO Target: {target_pct:.2f} ({(target_pct * 100 * MAX_CAPITAL_USAGE):.1f}% Vốn)")
                     executor.execute_ppo(target_pct)
 
 
-            print(" Sleeping 60s...")
-            time.sleep(60)
+            print(" Sleeping 120s...")
+            time.sleep(120)  # đổi tần suất
 
         except KeyboardInterrupt:
             print("\nBot stopped by user.")

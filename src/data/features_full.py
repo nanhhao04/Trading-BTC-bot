@@ -64,7 +64,7 @@ def add_technical_indicators(df):
 
 
 if __name__ == "__main__":
-    input_path = "../../data/raw/BTCUSDT_1h.csv"
+    input_path = "../../data/raw/BTCUSDT_15m.csv"
     output_dir = "../../data/processed"
 
     if os.path.exists(input_path):
@@ -80,12 +80,12 @@ if __name__ == "__main__":
 
         os.makedirs(output_dir, exist_ok=True)
 
-        df_processed.to_csv(f"{output_dir}/BTCUSDT_1h_features_full.csv", index=False, float_format="%.5f")
+        df_processed.to_csv(f"{output_dir}/BTCUSDT_15m_features_full.csv", index=False, float_format="%.5f")
 
         # CÁC THAM SỐ DÙNG CHO STATE
         state_cols = ["Norm_Close", "RSI14", "Volatility", "MACD", "SMA_Dist", "I_trend"]
         df_state = df_processed[state_cols]
-        df_state.to_csv(f"{output_dir}/BTCUSDT_1h_state.csv", index=False, float_format="%.5f")
+        df_state.to_csv(f"{output_dir}/BTCUSDT_15m_state.csv", index=False, float_format="%.5f")
 
         print(f"\nSaved files to: {output_dir}")
     else:

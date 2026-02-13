@@ -86,4 +86,7 @@ $$L^{CLIP} = \mathbb{E} [ \min(r_t A_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon)
     * PPO là thuật toán ngẫu nhiên (Stochastic Policy). Việc "thử sai" trong môi trường biến động lớn dẫn đến chuỗi thua lỗ liên tiếp (Whipsaw effect).
 * **Hành vi:** PPO trade rất nhiều, thắng lớn khi có Trend mạnh, nhưng thua lỗ nặng khi thị trường đảo chiều (Mean Reversion). **Phù hợp cho Momentum Trading.**
 
+``` bash
+streamlit run dashboard.py
+```
 ---

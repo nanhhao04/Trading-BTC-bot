@@ -133,11 +133,11 @@ class BinanceExecutor:
         delta = (target_pct - current_pos )       # khối lượng thực thi
 
         logger.info(f" Maxpossibleqty: {max_possible_qty},  Current position: {current_pos}, target position: {target_pct}, delta: {delta}")
-        if abs(delta) < (max_possible_qty * 0.01 * 0.1):
-            logger.info(f"PPO Delta too small ({delta:.4f})(< {max_possible_qty * 0.01 * 0.1})")
+        if abs(delta) < (max_possible_qty * 0.05 * 0.1):
+            logger.info(f"PPO Delta too small ({abs(delta):.4f})(< {max_possible_qty * 0.05 * 0.1})")
             return
 
-        logger.info(f"PPO Rebalance: Current {current_pos:.3f} -> Target {action_val:.3f} | Delta: {delta:.3f}")
+        #logger.info(f"PPO Rebalance: Current {current_pos:.3f} -> Target {target_pct:.3f} | Delta: {delta:.3f}")
 
         if delta > 0:
             self._place_order("BUY", delta)
