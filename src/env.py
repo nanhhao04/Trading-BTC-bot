@@ -33,7 +33,7 @@ class BitcoinTradingEnv(gym.Env):
             self.pos_tracker = 0
 
             # Cấu hình Reward cho DQN (Phạt nặng rủi ro)
-            self.reward_handler = RewardHandler(scaling=20, alpha=0.4, beta=0.08, holding_penalty= 0.0015)
+            self.reward_handler = RewardHandler(scaling=12, alpha=0.5, beta=0.9, holding_penalty= 0.004)
 
         elif model_type == 'PPO':
             # [-1, 1]: Tỷ trọng vốn
@@ -43,7 +43,7 @@ class BitcoinTradingEnv(gym.Env):
             self.pos_tracker = 0.0
 
             # Cấu hình Reward cho PPO (Thưởng lớn để Gradient rõ)
-            self.reward_handler = RewardHandler(scaling=20, alpha=0.4, beta=0.08, holding_penalty= 0.0015)
+            self.reward_handler = RewardHandler(scaling=12, alpha=0.5, beta=0.9, holding_penalty= 0.004)
 
         # Cấu hình Observation Space
         # Tổng = 8 features ( 6 + 2 )

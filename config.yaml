@@ -56,5 +56,5 @@ dqn_params:
 
 
 training:
-  total_timesteps: 1200000
+  total_timesteps: 1500000
   save_interval: 150000   # Lưu model sau mỗi 50k bước

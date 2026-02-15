@@ -1,6 +1,4 @@
 import time
-
-
 import pandas as pd
 import numpy as np
 import os
@@ -13,10 +11,12 @@ from stable_baselines3 import PPO, DQN
 from binance_api import BinanceExecutor
 from data.features_full import add_technical_indicators
 from logging_tool import setup_logging
+from metric import PerformanceTracker  # Import Tracker
 
 load_dotenv()
 logger = setup_logging()
 
+# --- LOAD CONFIG ---
 try:
     with open("../config.yaml", "r", encoding="utf-8") as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
@@ -25,20 +25,11 @@ except FileNotFoundError:
         with open('config.yaml', 'r') as f:
             cfg = yaml.load(f, Loader=yaml.FullLoader)
     except FileNotFoundError:
-        print("Lỗi: Không tìm thấy file config.yaml (ở ../ hoặc ./)")
+        print("Error: config.yaml not found.")
         exit()
 
-
-
-
-
 MODEL_TYPE = cfg["model_type"]
-
-if MODEL_TYPE == "PPO":
-    MODEL_PATH = cfg["paths"]["ppo_dir"]
-else:
-    MODEL_PATH = cfg["paths"]["dqn_dir"]
-
+MODEL_PATH = cfg["paths"]["ppo_dir"] if MODEL_TYPE == "PPO" else cfg["paths"]["dqn_dir"]
 TIMEFRAME = cfg["timeframes"]
 SYMBOL = cfg["symbol"]
 LEVERAGE = cfg["leverage"]
@@ -66,7 +57,6 @@ def get_live_klines(client, symbol, interval, limit=100):
 
 
 def construct_observation(df_features, executor):
-    # 1. Lấy dữ liệu thị trường mới nhất
     last_row = df_features.iloc[-1]
 
     market_state = np.array([
@@ -78,8 +68,14 @@ def construct_observation(df_features, executor):
         last_row['I_trend']
     ])
 
-    # 2. Lấy dữ liệu tài khoản
     current_pos_amt, current_price = executor.get_current_state()
+
+    # Lấy Balance để track performance
+    try:
+        current_balance = executor.get_balance()
+    except:
+        current_balance = 5000.0  # Default if API fails
+
     max_qty = executor.get_max_qty(current_price)
 
     if max_qty > 0:
@@ -87,22 +83,17 @@ def construct_observation(df_features, executor):
     else:
         current_pos_pct = 0.0
 
-    # Chuẩn hóa về [-1, 1]
     current_pos_pct = np.clip(current_pos_pct, -1.0, 1.0)
-
-    # Giả lập PnL
     account_pnl_pct = 0.0
-
     account_state = np.array([current_pos_pct, account_pnl_pct])
 
-    # Gộp lại
     obs = np.concatenate((market_state, account_state)).astype(np.float32)
-    return obs, last_row['close']
+
+    return obs, current_price, current_pos_pct, current_balance
 
 
 def main():
     print(f"STARTING LIVE BOT [{MODEL_TYPE}] - {SYMBOL} ({TIMEFRAME})")
-    print(f"Model Path: {MODEL_PATH}")
 
     final_model_path = MODEL_PATH
     if not os.path.exists(final_model_path):
@@ -119,59 +110,67 @@ def main():
         model = PPO.load(final_model_path)
     else:
         model = DQN.load(final_model_path)
-        print("Model loaded successfully!")
+    print("Model loaded.")
 
+    # --- INIT TRACKER ---
+    try:
+        initial_bal = executor.get_balance()
+    except:
+        initial_bal = 5000.0
 
-    print("Waiting for next candle check...")
+    tracker = PerformanceTracker(initial_balance=initial_bal)
+    print(f"Tracker initialized. Base Balance: ${initial_bal:.2f}")
 
     while True:
         try:
-            # 1. Lấy dữ liệu
             df = get_live_klines(executor.client, SYMBOL, TIMEFRAME, limit=WINDOW_SIZE)
 
             if df is not None and not df.empty:
-                # 2. Tính Feature
                 df_processed = add_technical_indicators(df)
-                # 3. Tạo State
-                obs, current_price = construct_observation(df_processed, executor)
 
-                # Log
-                print(f"\n{datetime.now().strftime('%H:%M:%S')} | Price: {current_price:.2f}")
+                # Get Obs & State
+                obs, current_price, current_pos_pct, current_balance = construct_observation(df_processed, executor)
+
+                # Update Tracker
+                tracker.update(current_balance, current_pos_pct, current_price)
+
+                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Price: {current_price:.2f}")
                 print(f"State: RSI={obs[1]:.2f} | Trend={obs[5]:.0f} | Pos={obs[6]:.2f}")
-                logger.info(f" OBS: {obs[0]:.4f}, {obs[1]:.4f}, {obs[2]:.4f} ...")
+                logger.info(f"OBS: {obs[0]:.4f}, {obs[1]:.4f} ...")
 
-                # 4. Dự đoán
-                action, _ = model.predict(obs, deterministic=True)     # deterministic true là dùng mean của gaus
+                # Predict
+                action, _ = model.predict(obs, deterministic=True)
 
-                # 5. Thực thi
+                # Execute
                 if MODEL_TYPE == "DQN":
                     act_int = int(action)
                     print(f"DQN Signal: {act_int}")
                     executor.execute_dqn(act_int)
 
                 elif MODEL_TYPE == "PPO":
-                    #target_pct = action[0]
-                    print(f"raw action: {action[0]}")
-
                     if isinstance(action, np.ndarray):
-                        action = float(action.item())
+                        raw_action = float(action.item())
                     else:
-                        action = float(action)
+                        raw_action = float(action)
 
-                    target_pct = np.tanh(action)
-
-                    logger.info(f"PPO Target: {target_pct:.2f} ({(target_pct * 100 * MAX_CAPITAL_USAGE):.1f}% Vốn)")
+                    target_pct = np.tanh(raw_action)
+                    logger.info(f"PPO Target: {target_pct:.2f} ({(target_pct * 100 * MAX_CAPITAL_USAGE):.1f}% Capital)")
                     executor.execute_ppo(target_pct)
 
+                # Print Performance Stats
+                if len(tracker.history) > 0:
+                    stats = tracker.calculate_metrics()
+                    print(
+                        f" [PERFORMANCE] Return: {stats.get('Total Return')} | DD: {stats.get('Max Drawdown')} | Winrate: {stats.get('Winrate')}")
 
-            print(" Sleeping 120s...")
-            time.sleep(120)  # đổi tần suất
+            print("Sleeping 60s...")
+            time.sleep(60)
 
         except KeyboardInterrupt:
-            print("\nBot stopped by user.")
+            print("\nBot stopped.")
             break
         except Exception as e:
-            print(f"Critical Error: {e}")
+            print(f"Error: {e}")
             time.sleep(10)
 
 
