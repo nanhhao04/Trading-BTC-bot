@@ -5,15 +5,15 @@ seed: 42
 leverage: 20
 max_capital_usage: 0.05
 symbol: "BTCUSDT"
-timeframes: "15m"
+timeframes: "5m"
 
 system:
   device: "cpu"  # Chọn: "cuda" (GPU), "cpu", hoặc "auto"
   n_envs: 4
 
 paths:
-  data_full: "../data/processed/BTCUSDT_1h_features_full.csv"
-  data_state: "../data/processed/BTCUSDT_1h_state.csv"
+  data_full: "../data/processed/BTCUSDT_5m_features_full.csv"
+  data_state: "../data/processed/BTCUSDT_5m_state.csv"
   models_dir: "../model"
   ppo_dir: "../model/PPO_Bitcoin_RL_Trader/final_model.zip"
   dqn_dir: "../model/.."
@@ -22,8 +22,28 @@ paths:
 
 env:
   initial_balance: 10000
-  fee_rate: 0.0004       # 0.04% (Binance VIP 0)
-  window_size: 300        # Số nến dùng cho Z-score (đã dùng lúc pre-process)
+  fee_rate: 0.0005      
+  window_size: 300      
+
+# --- REWARD PARAMS (RewardHandler v2) ---
+
+reward:
+  15m:
+    scaling: 15.0          
+    alpha: 1.5             
+    beta: 0.12            
+    holding_penalty: 0.0003 
+    dd_threshold: 0.05    
+    clip_low: -1.5         
+    clip_high: 1.5
+  5m:
+    scaling: 25.0
+    alpha: 1.5
+    beta: 0.08
+    holding_penalty: 0.00008
+    dd_threshold: 0.03
+    clip_low: -2.0
+    clip_high: 2.0
 
 # --- HYPERPARAMETERS CHO PPO ---
 ppo_params:
@@ -56,5 +76,5 @@ dqn_params:
 
 
 training:
-  total_timesteps: 1200000
-  save_interval: 150000   # Lưu model sau mỗi 50k bước
+  total_timesteps: 2000000
+  save_interval: 200000   # Lưu model sau mỗi 

@@ -13,7 +13,12 @@ from env import BitcoinTradingEnv
 
 
 def load_config():
-    with open('../config.yaml', 'r', encoding='utf-8') as f: # Thêm encoding='utf-8'
+    # Lấy đường dẫn tuyệt đối đến thư mục chứa file train.py (là thư mục src)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # config.yaml nằm ở thư mục cha của src
+    config_path = os.path.join(script_dir, '..', 'config.yaml')
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
 # Hàm tạo môi trường (Bắt buộc phải tách ra hàm riêng để chạy song song)
@@ -24,7 +29,8 @@ def make_env(rank, df_full, df_state, cfg, seed=0):
             df_state=df_state,
             model_type=cfg['model_type'],
             initial_balance=cfg['env']['initial_balance'],
-            fee_rate=cfg['env']['fee_rate']
+            fee_rate=cfg['env']['fee_rate'],
+            reward_cfg=cfg.get('reward', {}).get(cfg.get('timeframes', '5m'), {}),   # Truyền reward params từ config
         )
         env.reset(seed=seed + rank)
         return env
@@ -35,13 +41,20 @@ def make_env(rank, df_full, df_state, cfg, seed=0):
 def main():
     # 1. Load Config
     cfg = load_config()
+    
+    # Lấy project root (thư mục cha của src)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
     device = cfg['system'].get('device', 'auto')
     print(f"Training on DEVICE: {device.upper()}")
 
-    # 2. Load Dữ liệu
+    # 2. Load Dữ liệu - Chuyển sang đường dẫn tuyệt đối
     print("Loading data...")
-    df_full = pd.read_csv(cfg['paths']['data_full'])
-    df_state = pd.read_csv(cfg['paths']['data_state'])
+    data_full_path = os.path.normpath(os.path.join(project_root, 'src', cfg['paths']['data_full']))
+    data_state_path = os.path.normpath(os.path.join(project_root, 'src', cfg['paths']['data_state']))
+    
+    df_full = pd.read_csv(data_full_path)
+    df_state = pd.read_csv(data_state_path)
 
     min_len = min(len(df_full), len(df_state))
     df_full = df_full.iloc[:min_len]
@@ -57,15 +70,20 @@ def main():
         # DummyVecEnv: Chạy trên 1 luồng (Dành cho debug hoặc máy yếu)
         env = DummyVecEnv([make_env(0, df_full, df_state, cfg)])
 
-    # 4. Khởi tạo Model với tham số 'device'
+    # 4. Khởi tạo Model với tham số 'device' - Chuyển sang đường dẫn tuyệt đối
     model_type = cfg['model_type'].upper()
-    save_dir = os.path.join(cfg['paths']['models_dir'], f"{model_type}_{cfg['project_name']}")
+    # Đảm bảo lưu đúng vào thư mục model bên trong project
+    abs_models_dir = os.path.normpath(os.path.join(project_root, 'model'))
+    save_dir = os.path.join(abs_models_dir, f"{model_type}_{cfg['project_name']}")
 
+    # 5. Callback & Train
+    abs_logs_dir = os.path.normpath(os.path.join(project_root, 'tensorboard_logs'))
+    
     if model_type == "PPO":
         model = PPO(
             env=env,
             device=device,
-            tensorboard_log=cfg['paths']['logs_dir'],
+            tensorboard_log=abs_logs_dir,
             seed=cfg['seed'],
             **cfg['ppo_params']
         )
@@ -73,7 +91,7 @@ def main():
         model = DQN(
             env=env,
             device=device,
-            tensorboard_log=cfg['paths']['logs_dir'],
+            tensorboard_log=abs_logs_dir,
             seed=cfg['seed'],
             **cfg['dqn_params']
         )

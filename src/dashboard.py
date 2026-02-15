@@ -95,10 +95,10 @@ def fetch_data():
         return net_worth, total_unrealized_pnl, btc_pos
 
     except ClientError as error:
-        print(f"⚠️ Binance Error: {error.error_message}")
+        print(f"Binance Error: {error.error_message}")
         return None, None, None
     except Exception as e:
-        print(f"⚠️ Python Error: {e}")
+        print(f"Python Error: {e}")
         return None, None, None
 
 
@@ -173,7 +173,7 @@ with main_container:
 
         # C. Biểu đồ
         st.divider()
-        st.subheader("📈 Tài sản ròng")
+        st.subheader("Tài sản ròng")
         if os.path.exists(HISTORY_FILE):
             try:
                 df = pd.read_csv(HISTORY_FILE)
@@ -194,7 +194,7 @@ with main_container:
 
     # D. Logs
     st.divider()
-    st.subheader("📜 Live Logs")
+    st.subheader("Live Logs")
     unique_key = f"log_{datetime.now().timestamp()}"
     st.text_area("Log Output", load_logs(), height=300, key=unique_key)
     st.caption(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")

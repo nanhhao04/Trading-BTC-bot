@@ -3,10 +3,15 @@
 __pycache__/
 *.pyc
 
-.idea
+.idea/
 
-model
+# Models & Logs
+model/
+tensorboard_logs/
+logs/
 
-tensorboard_logs
-
-logs
+# Data & Results
+data/raw/
+data/processed/
+*.csv
+backtest_results/

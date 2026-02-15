@@ -12,7 +12,8 @@ from reward import RewardHandler
 class BitcoinTradingEnv(gym.Env):
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, df_full, df_state, model_type='DQN', initial_balance=10000, fee_rate=0.0004):
+    def __init__(self, df_full, df_state, model_type='DQN',
+                 initial_balance=5000, fee_rate=0.0006, reward_cfg: dict = None):
         super(BitcoinTradingEnv, self).__init__()
 
         self.df_full = df_full.reset_index(drop=True)
@@ -24,26 +25,32 @@ class BitcoinTradingEnv(gym.Env):
         self.short_count = 0
         self.flat_count = 0
 
+        # Đọc reward params từ config (fallback về v2 defaults nếu không có config)
+        rw = reward_cfg or {}
+        reward_handler = RewardHandler(
+            scaling         = rw.get('scaling',         50.0),
+            alpha           = rw.get('alpha',           1.5),
+            beta            = rw.get('beta',            0.15),
+            holding_penalty = rw.get('holding_penalty', 0.0003),
+            dd_threshold    = rw.get('dd_threshold',    0.05),
+            clip_low        = rw.get('clip_low',        -5.0),
+            clip_high       = rw.get('clip_high',        5.0),
+        )
+
         # --- 1. Cấu hình Action Space ---
         if model_type == 'DQN':
             # 0: Wait, 1: Long, 2: Short, 3: Close
-            self.action_space = spaces.Discrete(4)
+            self.action_space   = spaces.Discrete(4)
             self.action_handler = ActionDQN(fee_rate=fee_rate)
-            # DQN dùng biến rời rạc: 0 (Neutral), 1 (Long), -1 (Short)
-            self.pos_tracker = 0
-
-            # Cấu hình Reward cho DQN (Phạt nặng rủi ro)
-            self.reward_handler = RewardHandler(scaling=20, alpha=0.4, beta=0.08, holding_penalty= 0.0015)
+            self.pos_tracker    = 0
+            self.reward_handler = reward_handler
 
         elif model_type == 'PPO':
             # [-1, 1]: Tỷ trọng vốn
-            self.action_space = spaces.Box(low=-3, high=3, shape=(1,), dtype=np.float32)
+            self.action_space   = spaces.Box(low=-3, high=3, shape=(1,), dtype=np.float32)
             self.action_handler = ActionPPO(fee_rate=fee_rate)
-            # PPO dùng biến liên tục: -1.0 đến 1.0
-            self.pos_tracker = 0.0
-
-            # Cấu hình Reward cho PPO (Thưởng lớn để Gradient rõ)
-            self.reward_handler = RewardHandler(scaling=20, alpha=0.4, beta=0.08, holding_penalty= 0.0015)
+            self.pos_tracker    = 0.0
+            self.reward_handler = reward_handler
 
         # Cấu hình Observation Space
         # Tổng = 8 features ( 6 + 2 )
@@ -122,7 +129,7 @@ class BitcoinTradingEnv(gym.Env):
         # Điều kiện dừng sớm: Cháy tài khoản (còn dưới 50% vốn)
         if self.net_worth < self.initial_balance * 0.5:
             done = True
-            reward = -100  # Phạt cực nặng nếu cháy
+            reward = self.reward_handler.clip_low  # Phạt ở mức clip_low để tránh nổ loss
 
         obs = self._get_observation()
 

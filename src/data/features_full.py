@@ -64,29 +64,29 @@ def add_technical_indicators(df):
 
 
 if __name__ == "__main__":
-    input_path = "../../data/raw/BTCUSDT_15m.csv"
     output_dir = "../../data/processed"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    timeframes = ["1h", "15m", "5m"]
+    
+    for tf in timeframes:
+        input_path = f"../../data/raw/BTCUSDT_{tf}.csv"
+        
+        if os.path.exists(input_path):
+            print(f"Processing {tf}...")
+            df = pd.read_csv(input_path)
+            print(f"  Raw data shape: {df.shape}")
 
-    if os.path.exists(input_path):
-        df = pd.read_csv(input_path)
-        print(f"Raw data shape: {df.shape}")
+            df_processed = add_technical_indicators(df)
+            print(f"  Processed data shape: {df_processed.shape}")
 
-        df_processed = add_technical_indicators(df)
-        print(f"Processed data shape: {df_processed.shape}")
+            df_processed.to_csv(f"{output_dir}/BTCUSDT_{tf}_features_full.csv", index=False, float_format="%.5f")
 
-        cols_check = ["Norm_Close", "RSI14", "Volatility", "MACD"]
-        print("\n Statistics Check (Should be standardized) ")
-        print(df_processed[cols_check].describe().loc[['mean', 'std', 'min', 'max']])
+            # CÁC THAM SỐ DÙNG CHO STATE
+            state_cols = ["Norm_Close", "RSI14", "Volatility", "MACD", "SMA_Dist", "I_trend"]
+            df_state = df_processed[state_cols]
+            df_state.to_csv(f"{output_dir}/BTCUSDT_{tf}_state.csv", index=False, float_format="%.5f")
 
-        os.makedirs(output_dir, exist_ok=True)
-
-        df_processed.to_csv(f"{output_dir}/BTCUSDT_15m_features_full.csv", index=False, float_format="%.5f")
-
-        # CÁC THAM SỐ DÙNG CHO STATE
-        state_cols = ["Norm_Close", "RSI14", "Volatility", "MACD", "SMA_Dist", "I_trend"]
-        df_state = df_processed[state_cols]
-        df_state.to_csv(f"{output_dir}/BTCUSDT_15m_state.csv", index=False, float_format="%.5f")
-
-        print(f"\nSaved files to: {output_dir}")
-    else:
-        print(f"Error: Input file not found at {input_path}")
+            print(f"  Saved files to: {output_dir}")
+        else:
+            print(f"Error: Input file not found at {input_path}")
