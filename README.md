@@ -4,16 +4,27 @@ Dự án này ứng dụng công nghệ **Học tăng cường sâu (Deep Reinfo
 
 ---
 
-##  Các Kỹ Thuật Nổi Bật (Key Techniques)
+## ⚙️ Các Kỹ Thuật Nổi Bật (Key Techniques)
 
-1. **Thuật toán cốt lõi**: So sánh và đánh giá hiệu năng giữa 2 thuật toán RL hàng đầu là **PPO (Proximal Policy Optimization)** (thiên về Momentum Trading) và **DQN (Deep Q-Network)** (thiên về Swing Trading/lọc nhiễu).
-2. **Xử lý Tín hiệu (Feature Engineering)**: 
-   - Chuẩn hóa Z-Score cục bộ (Rolling Normalization) để tránh hiện tượng trôi dạt gradient (Covariate Shift).
-   - Bộ lọc xu hướng (Regime Filter) phân tách thị trường Bull/Bear qua đường SMA.
-3. **Định hình Phần thưởng (Reward Shaping)**:
-   - **Asymmetric Realized Reward**: Khuyến khích cắt lỗ sớm (thưởng nhỏ khi cắt lỗ nhỏ) để giải quyết tâm lý "sợ cắt lỗ" (Ride loss) của bot.
-   - **Noise Thresholding**: Loại bỏ nhiễu `step_reward` trong vùng giá đi ngang (Sideways) để hạn chế tối đa việc trade lướt sóng (Overtrading).
-   - Phạt dựa trên **Max Drawdown (DD Penalty)** với ngưỡng an toàn.
+### 1. 🤖 Thuật Toán Cốt Lõi (Core RL Algorithms)
+* **DQN (Deep Q-Network - Thiên về Swing Trading & Lọc nhiễu):** 
+  * Sử dụng không gian hành động rời rạc (Flat, Long, Short, Close). DQN được tối ưu hóa để nắm bắt các con sóng lớn (Swing) và có xu hướng **cực kỳ kiên nhẫn** (Flat % lên đến 73%). Thuật toán này học cách đứng ngoài thị trường trong suốt các giai đoạn đi ngang và nhiễu sóng để bảo toàn vốn tối đa.
+* **PPO (Proximal Policy Optimization - Thiên về Momentum Trading):** 
+  * Thuật toán tối ưu hóa chính sách cận biên. PPO có đặc tính **Hyperactive** (giao dịch năng động trong 93.8% thời gian), luôn cố gắng bám sát và khai thác động lượng ngắn hạn (Momentum) để tối ưu hóa tần suất sinh lời.
+
+### 2. 📊 Xử Lý Tín Hiệu (Advanced Feature Engineering)
+* **Chuẩn hóa Z-Score Cục bộ (Rolling Normalization):**
+  * Giải quyết triệt để hiện tượng trôi dạt phân phối dữ liệu (Covariate Shift) trong thị trường tài chính không dừng (Non-Stationary). Các chỉ báo kỹ thuật được chuẩn hóa Z-Score động theo cửa sổ trượt (rolling window) giúp gradient của mạng thần kinh hội tụ ổn định và tránh quá khớp (overfitting).
+* **Bộ lọc xu hướng (Regime Filter):**
+  * Tích hợp đường trung bình động SMA để phân tách rõ rệt trạng thái thị trường Bullish (Tăng giá) và Bearish (Giảm giá), giúp Agent nhận diện cấu trúc xu hướng lớn để đưa ra quyết định đi lệnh an toàn.
+
+### 3. 🎯 Định Hình Phần Thưởng Độc Quyền (Premium Reward Shaping)
+* **Asymmetric Realized Reward (Phạt cắt lỗ bất đối xứng):**
+  * Giải quyết triệt để tâm lý gồng lỗ (Ride loss) của bot bằng cơ chế phạt tăng dần theo biên độ lỗ. Hệ thống khuyến khích cắt lỗ sớm bằng các hình phạt nhẹ khi chủ động cắt lỗ nhỏ, và phạt cực nặng khi gồng lỗ sâu, giúp bot rèn luyện kỷ luật "cắt lỗ nhanh, giữ lãi dài".
+* **Noise Thresholding (Lọc nhiễu Sideways):**
+  * Loại bỏ hoàn toàn các phần thưởng nhiễu (`step_reward`) khi giá dao động nhỏ trong vùng tích lũy (Sideways). Cơ chế này ngăn chặn hành vi giao dịch quá đà (Overtrading) gây bào mòn tài khoản bởi phí giao dịch.
+* **Max Drawdown Penalty (Hình phạt sụt giảm tài sản tối đa):**
+  * Áp dụng hình phạt bổ sung nặng khi tài khoản sụt giảm vượt ngưỡng an toàn so với đỉnh vốn cao nhất (Peak Net Worth), ép buộc mô hình phải đặt sự an toàn của dòng tiền và bảo toàn vốn lên vị thế cao nhất.
 
 ---
 
@@ -84,12 +95,7 @@ Hệ thống đã thực hiện kiểm thử lịch sử (Backtest) dài hạn t
 ![So sánh các chỉ số hiệu suất chính](backtest_results/metrics_comparison.png)
 *Hình 2: So sánh trực quan giữa các chỉ số chính: Tổng lợi nhuận %, Sụt giảm tối đa %, Tỷ lệ thắng % và chỉ số Sharpe.*
 
-#### 💡 Phân tích chiến lược & Nhận xét then chốt:
-1. **Sự kiên nhẫn tạo nên sự khác biệt (Tỷ lệ Flat %):**
-   * **DQN (Flat 73%):** Học được cách kiên nhẫn đứng ngoài thị trường trong suốt các giai đoạn đi ngang (sideways) và nhiễu sóng của BTC. DQN chỉ vào lệnh khi xu hướng thực sự rõ ràng, nhờ đó giảm thiểu tối đa phí giao dịch và tránh bị bào mòn tài khoản.
-   * **PPO (Flat 6.2%):** Cực kỳ nóng vội, hầu như luôn nắm giữ vị thế (Long hoặc Short) trong 93.8% thời gian backtest. Điều này làm PPO liên tục phải trả phí Funding Fee và chịu tổn thất nặng nề trong giai đoạn thị trường tích lũy/sideways (Max Drawdown lên tới **16.55%**).
-2. **Quản lý rủi ro xuất sắc (Drawdown & Sharpe):**
-   * Mô hình **DQN** đạt tỷ lệ Sharpe kỷ lục **`9.38`** và chỉ chịu sụt giảm tối đa cực thấp là **`5.26%`**. Điều này khẳng định cơ chế phần thưởng **Asymmetric Reward Shaping** và bộ lọc xu hướng **Z-Score cục bộ** đã giúp mô hình tối ưu hóa tỷ lệ lợi nhuận/rủi ro ở mức xuất sắc nhất. PPO đạt mức Sharpe khá tốt là **`3.49`** nhờ thuật toán tối ưu mới nhưng độ sụt giảm vẫn khá cao do tính Hyperactive.
+
 
 ---
 
