@@ -25,6 +25,41 @@ Dự án này ứng dụng công nghệ **Học tăng cường sâu (Deep Reinfo
   * Loại bỏ hoàn toàn các phần thưởng nhiễu (`step_reward`) khi giá dao động nhỏ trong vùng tích lũy (Sideways). Cơ chế này ngăn chặn hành vi giao dịch quá đà (Overtrading) gây bào mòn tài khoản bởi phí giao dịch.
 * **Max Drawdown Penalty (Hình phạt sụt giảm tài sản tối đa):**
   * Áp dụng hình phạt bổ sung nặng khi tài khoản sụt giảm vượt ngưỡng an toàn so với đỉnh vốn cao nhất (Peak Net Worth), ép buộc mô hình phải đặt sự an toàn của dòng tiền và bảo toàn vốn lên vị thế cao nhất.
+### 4. 🎛️ Không gian Hành động (Action Spaces Mapping)
+Để tối ưu hóa hành vi giao dịch và phí giao dịch, không gian hành động được xây dựng chuyên biệt cho từng mô hình:
+* **DQN (Discrete 4 Action Space):**
+  * `0 = WAIT` (Giữ nguyên vị thế hiện tại, không thay đổi, **không phát sinh phí**).
+  * `1 = LONG` (Mở vị thế mua hoặc đóng Short để chuyển sang Long, target position = +1.0).
+  * `2 = SHORT` (Mở vị thế bán khống hoặc đóng Long để chuyển sang Short, target position = -1.0).
+  * `3 = CLOSE` (Đóng toàn bộ vị thế hiện tại về Flat để chốt lời/cắt lỗ chủ động, target position = 0.0).
+* **PPO (Discrete 3 Action Space - Chuẩn Paper):**
+  * `0 = SHORT` (Đặt vị thế đích mong muốn = -1.0).
+  * `1 = FLAT` (Đặt vị thế đích mong muốn = 0.0, đóng vị thế về 0, đứng ngoài thị trường).
+  * `2 = LONG` (Đặt vị thế đích mong muốn = +1.0).
+  * *Lưu ý:* Cơ chế **HOLD tự động** được tích hợp tự nhiên: Nếu vị thế đích của hành động trùng khớp với vị thế hiện tại ($\Delta \text{position} = 0$), hệ thống sẽ tự động giữ nguyên vị thế và **không tốn phí giao dịch**.
+
+### 5. 🧮 Hàm Phần Thưởng Toán Học (Mathematical Reward Function)
+Hệ thống sử dụng hàm định hình phần thưởng động lượng kết hợp quản lý rủi ro nâng cao dựa trên nghiên cứu khoa học:
+
+#### A. Running Reward (Phần thưởng duy trì mỗi bước nến - Eq. 8 Paper):
+Tại mỗi bước thời gian $t$, phần thưởng duy trì được tính toán theo PnL tài khoản thực tế trừ đi chi phí giao dịch phát sinh:
+$$R(t) = \left( r(t) \cdot A(t) \cdot \lambda - |A(t) - A(t-1)| \cdot C \cdot \lambda + \text{ShortBonus} \right) \cdot \text{scaling}$$
+Trong đó:
+* $r(t) = \ln(P_t / P_{t-1})$: Log-return biến động giá của tài sản tại thời điểm $t$.
+* $A(t) \in \{-1, 0, +1\}$: Trạng thái vị thế của Agent tại bước $t$ (Short / Flat / Long).
+* $C$: Basis points phí giao dịch ảo dùng để phạt hành vi đổi chiều liên tục (`transaction_cost`).
+* $\lambda = \text{Leverage} \times \text{Max Capital Usage}$: Hệ số đưa biến động phần trăm giá trị tài sản về đúng mức biến động thực tế của tài khoản.
+* $\text{ShortBonus}$: Phần thưởng khuyến khích mở lệnh Short khi thị trường trong xu hướng tăng (Uptrend) để hạn chế triệt để hiện tượng bot bị nghiêng hẳn về một chiều (Long-bias).
+* $\text{scaling}$: Hệ số khuếch đại tín hiệu giúp mạng phê bình (Critic Network) hội tụ nhanh hơn.
+
+#### B. Terminal Reward (Phần thưởng quyết toán cuối chu kỳ):
+Khi chu kỳ giao dịch kết thúc (hoặc bot chạm ngưỡng sụt giảm nguy hiểm), phần thưởng quyết toán được kích hoạt để huấn luyện bot kiểm soát rủi ro dài hạn:
+$$\text{Terminal Reward} = \begin{cases} 
+      -15.0 & \text{nếu } \text{LossFraction} \ge \text{terminal\_loss\_threshold } (60\% \text{ vốn}) \\
+      3.0 \cdot \text{PortfolioReturn} & \text{nếu } \text{PortfolioReturn} > 0 \\
+      -2.0 \cdot |\text{PortfolioReturn}| & \text{nếu } \text{PortfolioReturn} \le 0 
+   \end{cases}$$
+Cơ chế này áp dụng kỷ luật cực kỳ nghiêm ngặt: Phạt cực nặng khi bot bị sụt giảm quá giới hạn an toàn (Liquidation/Crash penalty), đồng thời khuếch đại phần thưởng khi bot kết thúc chu kỳ với hiệu suất dương.
 
 ---
 
