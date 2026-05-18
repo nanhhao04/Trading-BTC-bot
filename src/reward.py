@@ -3,111 +3,157 @@ import numpy as np
 
 class RewardHandler:
     """
-    RewardHandler v2 — Đã fix 5 lỗi phân tích định lượng:
-      A) DD penalty chỉ kích hoạt khi DD vượt ngưỡng dd_threshold (mặc định 5%)
-      B) DD penalty bậc 2 thay vì tuyến tính → nhẹ khi DD nhỏ, nặng dần khi DD lớn
-      C) Flat position (|pos| < 0.05) được miễn DD penalty — flat là trung tính
-      D) alpha = 1.5 (thay vì 0.3) → realized_reward đủ mạnh để bot học chốt lệnh
-      E) scaling và clip được truyền vào từ config, không hardcode
+    RewardHandler — Theo đúng công thức Paper (Eq. 8)
+
+    Running Reward (per bar):
+        R(t) = r(t) * A(t) - |A(t) - A(t-1)| * C
+
+        r(t)          : log-return của asset tại bước t
+        A(t)          : vị thế tại t ∈ {-1, 0, +1} (short / flat / long)
+        C             : transaction cost (basis points)
+        |A(t)-A(t-1)| : penalty khi đổi chiều giao dịch
+
+    Terminal Reward (Paper Section 2.2):
+        - Mất >= terminal_loss_threshold vốn → terminal_loss_penalty (large negative)
+        - Kết thúc có lãi                  → terminal_profit_multiplier * portfolio_return
+        - Kết thúc lỗ (chưa đến ngưỡng)   → terminal_loss_multiplier  * |portfolio_return|
+
+    1h calibration:
+        - C (transaction_cost) = 0.00075 (7.5 bps)
+        - terminal_loss_threshold = 0.60  (mất 60% vốn → dừng, chặt hơn 70% của daily)
     """
 
-    def __init__(self,
-                 scaling: float = 50.0,
-                 alpha: float = 1.5,
-                 beta: float = 0.15,
-                 holding_penalty: float = 0.0003,
-                 dd_threshold: float = 0.05,
-                 clip_low: float = -5.0,
-                 clip_high: float = 5.0):
-        self.scaling         = scaling          # Nhân toàn bộ reward cuối
-        self.alpha           = alpha            # Hệ số khuếch đại realized reward
-        self.beta            = beta             # Hệ số phạt DD (sau khi vượt ngưỡng)
-        self.holding_penalty = holding_penalty  # Chi phí giữ lệnh mỗi step
-        self.dd_threshold    = dd_threshold     # DD tối thiểu trước khi bắt đầu phạt
-        self.clip_low        = clip_low
-        self.clip_high       = clip_high
+    POS_THRESHOLD = 0.05  # Ngưỡng "có vị thế" (tránh float == 0 bug)
 
-        # Biến trạng thái
-        self.max_net_worth = 0.0
-        self.entry_price   = None
+    def __init__(self,
+                 transaction_cost: float = 0.00075,    # C trong paper (7.5 bps cho 1h)
+                 clip_low: float = -5.0,
+                 clip_high: float = 5.0,
+                 scaling: float = 1.0,                 # Hệ số khuếch đại reward signal (1h: ~150.0)
+                 # Terminal reward params (Paper Section 2.2)
+                 terminal_loss_threshold: float = 0.60,    # Mất >= X% vốn → phạt nặng
+                 terminal_loss_penalty: float = -15.0,     # Large negative (dùng cho cả liquidation)
+                 terminal_profit_multiplier: float = 3.0,  # Hệ số thưởng khi có lãi
+                 terminal_loss_multiplier: float = -2.0,   # Hệ số phạt khi lỗ
+                 short_bonus_when_longtrend: float = 0.0,  # Thưởng short signal để cân bằng long-bias
+                 ):
+        self.transaction_cost               = transaction_cost
+        self.clip_low                       = clip_low
+        self.clip_high                      = clip_high
+        self.scaling                        = scaling
+        self.terminal_loss_threshold        = terminal_loss_threshold
+        self.terminal_loss_penalty          = terminal_loss_penalty
+        self.terminal_profit_multiplier     = terminal_profit_multiplier
+        self.terminal_loss_multiplier       = terminal_loss_multiplier
+        self.short_bonus_when_longtrend     = short_bonus_when_longtrend
+
+        # Trạng thái nội bộ
         self.prev_position = 0.0
 
     def reset(self, initial_net_worth: float):
-        self.max_net_worth = initial_net_worth
-        self.entry_price   = None
         self.prev_position = 0.0
 
-    def calculate(self, net_worth, current_price, past_price, position, action_type, trend_flag):
-        # ------------------------------------------------------------------
-        # 1. Cập nhật Max Net Worth
-        # ------------------------------------------------------------------
-        if net_worth > self.max_net_worth:
-            self.max_net_worth = net_worth
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _is_flat(self, pos: float) -> bool:
+        return abs(pos) < self.POS_THRESHOLD
 
-        # ------------------------------------------------------------------
-        # 2. Step Reward — log return × position
-        # ------------------------------------------------------------------
-        log_return  = np.log(current_price / past_price)
-        step_reward = position * log_return
+    # ------------------------------------------------------------------
+    # Main calculate — R(t) = r(t)*A(t) - |A(t)-A(t-1)|*C
+    # ------------------------------------------------------------------
+    def calculate(self, net_worth, current_price, past_price, position,
+                  action_type, abstract_fee=0.0, reward_multiplier=1.0, log_return_trend=None):
+        """
+        Tính running reward theo công thức paper (Eq. 8) mở rộng:
 
-        # ------------------------------------------------------------------
-        # 3. Holding Cost — phạt giữ lệnh (bậc 2 theo size)
-        # ------------------------------------------------------------------
-        risk_cost = abs(position ** 2) * self.holding_penalty
+        R(t) = r(t) * A(t)  -  |A(t) - A(t-1)| * C  +  short_bonus*(if uptrend)
 
-        # ------------------------------------------------------------------
-        # 4. Realized Reward — thưởng/phạt khi đóng lệnh
-        realized_reward = 0.0
+        Đúng Eq.8 paper — không thêm baseline.
+        Short-bonus: khi market uptrend (log_return_trend > 0), thưởng SHORT action
+        để cân bằng long-bias tự nhiên trong uptrend.
+        """
 
-        # Phát hiện MỞ vị thế (Neutral → Có lệnh)
-        if self.prev_position == 0 and position != 0:
-            self.entry_price = current_price
-
-        # Phát hiện ĐÓNG vị thế (Có lệnh → Neutral)
-        if self.prev_position != 0 and position == 0 and self.entry_price is not None:
-            trade_return     = np.log(current_price / self.entry_price)
-            direction        = 1 if self.prev_position > 0 else -1
-            realized_return  = trade_return * direction
-            realized_reward  = self.alpha * realized_return  # FIX D
-            self.entry_price = None
-
-        # 5. Drawdown Penalty
-        current_dd = (self.max_net_worth - net_worth) / self.max_net_worth
-
-        if abs(position) < 0.05:  # FIX C: flat = trung tính
-            dd_penalty = 0.0
+        # r(t): log-return của asset tại bước t (Eq.8)
+        # Safety: handle edge cases (price=0, etc)
+        if current_price <= 0 or past_price <= 0:
+            log_return = 0.0
         else:
-            effective_dd = max(0.0, current_dd - self.dd_threshold)  # FIX A
-            dd_penalty   = self.beta * (effective_dd ** 2)            # FIX B
+            with np.errstate(divide='ignore', invalid='ignore'):
+                log_return = np.log(current_price / past_price)
+            log_return = float(np.nan_to_num(log_return, nan=0.0, posinf=0.0, neginf=0.0))
 
-        # ------------------------------------------------------------------
-        # 6. Trend Scaling
-        # ------------------------------------------------------------------
-        trend_factor = 1.0
-        if trend_flag == 1.0 and position > 0:    # Uptrend + Long
-            trend_factor = 1.2
-        elif trend_flag == 0.0 and position < 0:  # Downtrend + Short
-            trend_factor = 1.3
-        elif trend_flag == 1.0 and position < 0:  # Uptrend + Short
-            trend_factor = 0.8
-        elif trend_flag == 0.0 and position > 0:  # Downtrend + Long
-            trend_factor = 0.8
+        # r(t) * A(t) * reward_multiplier: P&L ở account-level
+        step_reward = position * log_return * reward_multiplier
+        step_reward = float(np.nan_to_num(step_reward, nan=0.0))
 
-        # ------------------------------------------------------------------
-        # 7. Tổng hợp Reward — FIX E: scaling + clip từ config
-        # ------------------------------------------------------------------
-        raw_reward   = ((step_reward + realized_reward) * trend_factor) - dd_penalty - risk_cost
-        total_reward = raw_reward * self.scaling
-        total_reward = float(np.clip(total_reward, self.clip_low, self.clip_high))
+        # |A(t) - A(t-1)| * C: transaction cost penalty
+        # FIX Scale Mismatch: nhân với reward_multiplier để đưa về account-level
+        # Trước đây abstract_fee ở asset-level → bị phóng đại gấp 5x so với step_reward
+        # Sau fix: cả hai cùng scale → agent không còn sợ giao dịch
+        cost_penalty = abstract_fee * reward_multiplier
+        cost_penalty = float(np.nan_to_num(cost_penalty, nan=0.0))
 
-        # Cập nhật vị thế cũ cho bước sau
+        # Short-bonus: khi market uptrend, thưởng SHORT (-1) signal
+        # Giúp agent học Short counter-trend thay vì always Long
+        short_bonus = 0.0
+        if self.short_bonus_when_longtrend > 0 and log_return_trend is not None:
+            log_return_trend = float(np.nan_to_num(log_return_trend, nan=0.0))
+            # Nếu uptrend (positive return trend) và position là SHORT (-1.0)
+            # → reward = -short_bonus (= large negative), nên ta thêm bonus để SHORT có advantage
+            if log_return_trend > 0 and position < -0.5:
+                short_bonus = self.short_bonus_when_longtrend
+            elif log_return_trend > 0 and position > 0.5:
+                # Penalize LONG thêm khi uptrend → avoid pure long-bias
+                short_bonus = -self.short_bonus_when_longtrend * 0.5
+
+        # R(t) = r_excess * A(t) - |A(t)-A(t-1)| * C + short_bonus
+        # Nhân thêm scaling factor để khuếch đại tín hiệu (giúp PPO Value Network hội tụ nhanh)
+        raw_reward = (step_reward - cost_penalty + short_bonus) * self.scaling
+        raw_reward = float(np.nan_to_num(raw_reward, nan=0.0))
+
+        # Clip để tránh gradient explosion
+        total_reward = float(np.clip(raw_reward, self.clip_low, self.clip_high))
+
+        # Final NaN check
+        if np.isnan(total_reward):
+            total_reward = 0.0
+
+        # Cập nhật trạng thái
         self.prev_position = position
 
         return total_reward, {
-            'step_reward':     step_reward,
-            'realized_reward': realized_reward,
-            'dd_penalty':      dd_penalty,
-            'trend_factor':    trend_factor,
-            'current_dd':      current_dd,
-            'risk_cost':       risk_cost,
+            'step_reward':  step_reward,
+            'cost_penalty': cost_penalty,
+            'short_bonus':  short_bonus,
+            'raw_reward':   raw_reward,
+            'total_reward': total_reward,
+            'holding_fee_lump': 0.0,
         }
+
+    # ------------------------------------------------------------------
+    # Terminal Reward (Paper Section 2.2)
+    # ------------------------------------------------------------------
+    def terminal_reward(self, net_worth: float, initial_balance: float) -> float:
+        """
+        Tính terminal reward khi kết thúc episode (done=True).
+
+        Paper Section 2.2:
+          - Mất >= terminal_loss_threshold vốn → terminal_loss_penalty (large negative)
+          - Kết thúc có lãi                   → terminal_profit_multiplier * return
+          - Kết thúc lỗ (chưa đến ngưỡng)    → terminal_loss_multiplier * |return|
+        """
+        loss_fraction = (initial_balance - net_worth) / initial_balance  # > 0 khi lỗ
+
+        # Trường hợp 1: Mất >= threshold → phạt nặng
+        if loss_fraction >= self.terminal_loss_threshold:
+            return self.terminal_loss_penalty
+
+        portfolio_return = (net_worth - initial_balance) / initial_balance
+
+        # Trường hợp 2: Có lãi → thưởng multiplier * return
+        if portfolio_return > 0:
+            return self.terminal_profit_multiplier * portfolio_return
+
+        # Trường hợp 3: Lỗ nhưng chưa đến ngưỡng → phạt nhẹ
+        return self.terminal_loss_multiplier * abs(portfolio_return)

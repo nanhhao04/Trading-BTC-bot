@@ -1,4 +1,15 @@
+numpy
+pandas
+pyyaml
 ta
 stable-baselines3[extra]
 gymnasium
 shimmy
+openai
+python-dotenv
+binance-futures-connector
+pycryptodome
+fastapi
+uvicorn
+plotly
+matplotlib

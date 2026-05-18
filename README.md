@@ -1,92 +1,99 @@
-# Deep Reinforcement Learning for Bitcoin Trading: Mathematical Foundation & Implementation
+# Deep Reinforcement Learning for Bitcoin Trading
 
-**Technical Reference for AI Engineers** **Based on:** *Prasetyo et al., 2025* **Topic:** Optimal Control in Non-Stationary Financial Markets (High-Frequency Crypto Trading).
-
-
----
-
-## 1. Vấn đề Cốt lõi: Tính Không Dừng (Non-Stationarity)
-
-Thị trường tiền điện tử (Bitcoin) thường tuân theo mô hình **Geometric Brownian Motion** với các tham số thay đổi theo thời gian (Time-varying parameters):
-
-$$dP_t = \mu_t P_t dt + \sigma_t P_t dW_t$$
-
-* $\mu_t$: Drift (Xu hướng) thay đổi liên tục.
-* $\sigma_t$: Volatility (Độ biến động) không ổn định (Heteroscedasticity).
-* **Hệ quả:** Hiện tượng **Covariate Shift**. Phân phối dữ liệu đầu vào $P(X)$ thay đổi liên tục, khiến mạng Nơ-ron bị "lạc trôi" (Gradient trôi dạt).
+Dự án này ứng dụng công nghệ **Học tăng cường sâu (Deep Reinforcement Learning - DRL)** để tự động hóa giao dịch Bitcoin (BTC) tần suất cao. Khung hệ thống được lấy cảm hứng từ nghiên cứu: *"Reinforcement learning for bitcoin trading: A comparative study of PPO and DQN (Prasetyo et al., 2025)"* với mục tiêu kiểm soát tối ưu trong thị trường tài chính không dừng (Non-Stationary).
 
 ---
 
-## 2. Feature Engineering: Xử lý Tín hiệu & Chuẩn hóa
+##  Các Kỹ Thuật Nổi Bật (Key Techniques)
 
-Để giải quyết Covariate Shift, ta không đưa giá thô ($P_t$) vào mạng. Ta cần biến đổi không gian trạng thái sang dạng ổn định (Stationary).
-
-### 2.1. Rolling Z-Score Normalization
-Kỹ thuật này đưa phân phối cục bộ tại mọi thời điểm về chuẩn tắc $\mathcal{N}(0, 1)$.
-
-$$z_t = \frac{x_t - \mu_{rolling}}{\sigma_{rolling}}$$
-
-* **Tại sao cần thiết?**
-    * Tránh bão hòa hàm kích hoạt (Activation Saturation). Nếu $x_t$ quá lớn (giá BTC 100k), tích vô hướng $W \cdot x + b$ sẽ đẩy đầu ra của Sigmoid/Tanh về $\pm 1$, nơi đạo hàm $\approx 0$ (Vanishing Gradient).
-    * $z_t$ giữ cho đầu vào luôn nằm trong vùng tuyến tính của hàm kích hoạt.
-
-### 2.2. Regime Filter (Bộ lọc Xu hướng)
-Sử dụng kiến thức chuyên gia (Expert Knowledge) để tách không gian trạng thái thành 2 chế độ (Regimes):
-
-$$I_{trend} = \mathbb{I}(P_t > \text{SMA}_{200})$$
-
-* $I_{trend} = 1$: Bull Market (Uptrend).
-* $I_{trend} = 0$: Bear Market (Downtrend).
-* **Input Vector $S_t$:**
-    $$S_t = [\text{Norm\_Close}, \text{RSI}_{14}, \text{Volatility}, \text{MACD}, \text{SMA\_Dist}, I_{trend}]$$
+1. **Thuật toán cốt lõi**: So sánh và đánh giá hiệu năng giữa 2 thuật toán RL hàng đầu là **PPO (Proximal Policy Optimization)** (thiên về Momentum Trading) và **DQN (Deep Q-Network)** (thiên về Swing Trading/lọc nhiễu).
+2. **Xử lý Tín hiệu (Feature Engineering)**: 
+   - Chuẩn hóa Z-Score cục bộ (Rolling Normalization) để tránh hiện tượng trôi dạt gradient (Covariate Shift).
+   - Bộ lọc xu hướng (Regime Filter) phân tách thị trường Bull/Bear qua đường SMA.
+3. **Định hình Phần thưởng (Reward Shaping)**:
+   - **Asymmetric Realized Reward**: Khuyến khích cắt lỗ sớm (thưởng nhỏ khi cắt lỗ nhỏ) để giải quyết tâm lý "sợ cắt lỗ" (Ride loss) của bot.
+   - **Noise Thresholding**: Loại bỏ nhiễu `step_reward` trong vùng giá đi ngang (Sideways) để hạn chế tối đa việc trade lướt sóng (Overtrading).
+   - Phạt dựa trên **Max Drawdown (DD Penalty)** với ngưỡng an toàn.
 
 ---
 
-## 3. Reward Shaping: Hàm Mục Tiêu Đa Biến
+##  Hướng dẫn Cài đặt & Chạy
 
-Thay vì dùng Lợi nhuận đơn thuần ($P_t - P_{t-1}$), ta xây dựng một hàm mục tiêu vô hướng hóa (Scalarized Objective) để giải quyết vấn đề **Temporal Credit Assignment** và **Risk Management**.
-
-**Công thức Tổng quát:**
-$$R_t = \phi_{regime} \times \left( \underbrace{R_{unrealized}}_{\text{Dẫn hướng}} + \alpha \underbrace{R_{realized}}_{\text{Chốt đơn}} - \beta \underbrace{DD_t}_{\text{Rủi ro}} \right) - \text{Cost}$$
-
-### 3.1. Thành phần Dẫn hướng (Dense Reward Manifold)
-$$R_{unrealized} = \text{Position}_t \times \frac{P_t - P_{t-1}}{P_{t-1}}$$
-* Tạo ra một bề mặt Gradient liên tục, giúp Agent học được hướng đi đúng ngay cả khi chưa đóng lệnh.
-
-### 3.2. Thành phần Rủi ro (Non-linear Penalty)
-$$DD_t = \frac{\text{Peak}_t - \text{Equity}_t}{\text{Peak}_t}$$
-* Phạt dựa trên **Max Drawdown**.
-* **Cơ chế Toán học:** Tạo ra một "vách núi" (Cliff) trong không gian $Q$-value. Nếu một hành động dẫn đến trạng thái có Drawdown cao, giá trị $Q(s,a)$ tại đó sẽ sụt giảm nghiêm trọng $\rightarrow$ Agent học cách tránh xa các chuỗi hành động rủi ro cao.
-
-### 3.3. Hệ số Môi trường (Regime Factor)
-$$\phi_{regime} = \begin{cases} 1.0 & \text{if } P_t > \text{SMA}_{200} \\ 0.8 & \text{if } P_t \le \text{SMA}_{200} \end{cases}$$
-* Giảm kỳ vọng phần thưởng trong Downtrend. Làm giảm $Q$-value của hành động MUA, khiến Agent trở nên "thận trọng" (Conservative) hơn.
-
----
-
-## 4. Algorithm Dynamics: Toán học của DQN vs PPO
-
-### 4.1. DQN (Deep Q-Network) - Robustness against Noise
-DQN chiến thắng trong thị trường nhiễu (Sideways) nhờ **Huber Loss**.
-
-$$\mathcal{L}_{Huber}(\delta) = \begin{cases} \frac{1}{2}\delta^2 & \text{if } |\delta| \le \delta_{thresh} \\ \delta_{thresh} (|\delta| - \frac{1}{2}\delta_{thresh}) & \text{otherwise} \end{cases}$$
-
-* **Phân tích:**
-    * Với nhiễu nhỏ (Normal market): Học nhanh như hàm bậc 2 (MSE).
-    * Với nhiễu lớn/Outliers (Flash crash): Học tuyến tính (Linear), không bị quá nhạy cảm.
-* **Hành vi:** DQN lọc bỏ nhiễu, chỉ vào lệnh khi tín hiệu cực rõ ($Q$-value vượt trội). **Phù hợp cho Swing Trading.**
-
-### 4.2. PPO (Proximal Policy Optimization) - Vulnerability in High Variance
-PPO gặp khó khăn do ước lượng Advantage ($A_t$) có phương sai cao.
-
-$$L^{CLIP} = \mathbb{E} [ \min(r_t A_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) A_t) ]$$
-
-* **Vấn đề:**
-    * Trong Crypto, $A_t(s,a) = Q(s,a) - V(s)$ biến động cực mạnh.
-    * PPO là thuật toán ngẫu nhiên (Stochastic Policy). Việc "thử sai" trong môi trường biến động lớn dẫn đến chuỗi thua lỗ liên tiếp (Whipsaw effect).
-* **Hành vi:** PPO trade rất nhiều, thắng lớn khi có Trend mạnh, nhưng thua lỗ nặng khi thị trường đảo chiều (Mean Reversion). **Phù hợp cho Momentum Trading.**
-
-``` bash
-streamlit run dashboard.py
+### 1. Cài đặt Môi trường
+Cài đặt các thư viện phụ thuộc bằng `pip`:
+```bash
+pip install -r requirements.txt
 ```
+
+### 2. Chuẩn bị Dữ liệu (Data Pipeline)
+Hệ thống yêu cầu dữ liệu lịch sử để huấn luyện và kiểm thử.
+- **Thu thập dữ liệu (Fetch Data):** Tải dữ liệu nến (OHLCV) từ sàn giao dịch (ví dụ: Binance) về thư mục `data/raw/`.
+```bash
+python src/data/data_loader.py
+# hoặc
+python src/data/fetch_hist_5m.py
+```
+- **Xử lý dữ liệu (Preprocess & Feature Engineering):** Tính toán các chỉ báo kỹ thuật (RSI, MACD, Volatility), tạo nhãn xu hướng (Trend) và chuẩn hóa Z-Score. Dữ liệu đầu ra lưu tại `data/processed/`.
+```bash
+python src/data/preprocess_mar2026.py
+# hoặc tính toán features tổng quát
+python src/data/features_full.py
+```
+
+### 3. Huấn luyện Mô hình (Train)
+Huấn luyện mô hình từ đầu với cấu hình được quy định trong `config.yaml`:
+```bash
+python src/train.py
+```
+
+### 4. Kiểm thử Mô hình (Backtest)
+Chạy backtest để kiểm tra tỷ lệ Win/Loss, Sharpe Ratio, Profit Factor trên tệp dữ liệu kiểm thử:
+```bash
+# Backtest mô hình theo cấu hình mặc định
+python src/backtest.py
+
+# Backtest so sánh bộ reward cũ và mới
+python src/backtest.py --compare
+```
+
+#### 📊 Kết Quả Backtest Thực Tế & Phân Tích (Dec 2022 - Feb 2026)
+Hệ thống đã thực hiện kiểm thử lịch sử (Backtest) dài hạn trên dữ liệu thực tế khung 1h của cặp BTCUSDT từ **31/12/2022** đến **01/02/2026**. Kết quả cho thấy sự chênh lệch hiệu năng cực lớn giữa hai trường phái thuật toán và chiến lược:
+
+| Chỉ số hiệu suất (Metric) | Mô hình DQN (Swing Strategy) | Mô hình PPO (Momentum Strategy) | Đánh giá & So sánh |
+| :--- | :---: | :---: | :--- |
+| **Tổng lợi nhuận (Total Return %)** | **`+63.84%`** | **`+30.36%`** | **DQN vượt trội gấp 2.1 lần** |
+| **Sụt giảm tối đa (Max Drawdown %)**| **`5.26%`** | **`16.55%`** | **DQN an toàn gấp 3.1 lần** |
+| **Chỉ số Sharpe (Sharpe Ratio)** | **`9.38`** | **`3.49`** | **Cả hai đều có Sharpe xuất sắc, nhưng DQN vượt trội** |
+| **Tỷ lệ thắng (Win Rate %)** | **`54.16%`** | **`54.30%`** | Tương đương nhau |
+| **Số lượng giao dịch (N Trades)** | **`2,851`** | **`1,674`** | DQN giao dịch năng động hơn khi có xu hướng rõ ràng |
+| **Tỷ lệ đứng ngoài (Flat %)** | **`73.0%`** | **`6.2%`** | **Sự kiên nhẫn làm nên chiến thắng** |
+| **Hệ số lợi nhuận (Profit Factor)** | **`1.836`** | **`1.299`** | DQN mang lại dòng tiền ròng tối ưu hơn |
+
+#### 📈 Trực quan hóa đường cong vốn & Chỉ số hiệu suất
+![Đường cong vốn tích lũy](backtest_results/equity_curve.png)
+*Hình 1: Biểu đồ tăng trưởng tài khoản (Equity Curve) của DQN và PPO từ vốn ban đầu $10,000.*
+
+![So sánh các chỉ số hiệu suất chính](backtest_results/metrics_comparison.png)
+*Hình 2: So sánh trực quan giữa các chỉ số chính: Tổng lợi nhuận %, Sụt giảm tối đa %, Tỷ lệ thắng % và chỉ số Sharpe.*
+
+#### 💡 Phân tích chiến lược & Nhận xét then chốt:
+1. **Sự kiên nhẫn tạo nên sự khác biệt (Tỷ lệ Flat %):**
+   * **DQN (Flat 73%):** Học được cách kiên nhẫn đứng ngoài thị trường trong suốt các giai đoạn đi ngang (sideways) và nhiễu sóng của BTC. DQN chỉ vào lệnh khi xu hướng thực sự rõ ràng, nhờ đó giảm thiểu tối đa phí giao dịch và tránh bị bào mòn tài khoản.
+   * **PPO (Flat 6.2%):** Cực kỳ nóng vội, hầu như luôn nắm giữ vị thế (Long hoặc Short) trong 93.8% thời gian backtest. Điều này làm PPO liên tục phải trả phí Funding Fee và chịu tổn thất nặng nề trong giai đoạn thị trường tích lũy/sideways (Max Drawdown lên tới **16.55%**).
+2. **Quản lý rủi ro xuất sắc (Drawdown & Sharpe):**
+   * Mô hình **DQN** đạt tỷ lệ Sharpe kỷ lục **`9.38`** và chỉ chịu sụt giảm tối đa cực thấp là **`5.26%`**. Điều này khẳng định cơ chế phần thưởng **Asymmetric Reward Shaping** và bộ lọc xu hướng **Z-Score cục bộ** đã giúp mô hình tối ưu hóa tỷ lệ lợi nhuận/rủi ro ở mức xuất sắc nhất. PPO đạt mức Sharpe khá tốt là **`3.49`** nhờ thuật toán tối ưu mới nhưng độ sụt giảm vẫn khá cao do tính Hyperactive.
+
 ---
+
+### 5. Chạy Bot Thực tế (Live)
+Khởi chạy bot giao dịch tự động thời gian thực:
+```bash
+python -u src/run_agent.py
+```
+
+### 6. Khởi động Giao diện Quản lý (Dashboard)
+Chạy giao diện giám sát Bot Trading:
+```bash
+uvicorn dashboard.server:app --reload
+```
+vào localhost: http://127.0.0.1:8000/

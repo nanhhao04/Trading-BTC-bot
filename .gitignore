@@ -1,17 +1,93 @@
+# ==========================================
+# 🛡️ PROFESSIONAL GITIGNORE FOR BOTTRADING-RF
+# ==========================================
+
+# 1. Private / Sensitive Files (CRITICAL SECURITY)
 .env
+.env.local
+.env.*.local
+*.env
+secret_key.txt
+keys/
+credentials.json
 
+# 2. Python Runtime & Cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
+# 3. Virtual Environments (Python Venv)
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 4. IDE Specific Settings (PyCharm, VSCode, OS)
 .idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
 
-# Models & Logs
+# 5. Trading Models, Weights & Checkpoints (Large Binaries)
 model/
+*.zip
+*.pkl
+*.h5
+*.pt
+*.pth
+*.onnx
+*.pb
+checkpoint/
+
+# 6. Tensorboard & Logs
 tensorboard_logs/
 logs/
+*.log
+balance_history.csv
+balance_history_src_temp.csv
 
-# Data & Results
+# 7. Dataset & Large Market Data Files
 data/raw/
 data/processed/
 *.csv
-backtest_results/
+!dashboard/static/*.csv # Allow dashboard assets if any
+
+# 8. Backtest Summary Reports (Keep images if wanted, ignore data)
+backtest_results/*.csv
+backtest_results/*.xlsx
+backtest_results/*.json
+# Allow backtest visualization images for documentation/README
+!backtest_results/*.png
+!backtest_results/*.jpg
+!backtest_results/*.jpeg
+
+# 9. Temporary & Scratch Files
+scratch/temp/
+scratch/*.txt
+scratch/*.log

@@ -6,7 +6,12 @@ import os
 import yaml
 from logging_tool import setup_logging
 load_dotenv()
-with open("../config.yaml", "r", encoding="utf-8") as f:
+
+# Tự động xác định đường dẫn động đến config.yaml nằm ở thư mục cha của src/
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CFG_PATH = os.path.normpath(os.path.join(SCRIPT_DIR, '..', 'config.yaml'))
+
+with open(CFG_PATH, "r", encoding="utf-8") as f:
     cfg = yaml.load(f, Loader=yaml.FullLoader)
 
 API_KEY = os.getenv("API_KEY")
@@ -57,6 +62,16 @@ class BinanceExecutor:
         # Công thức: (Balance * Leverage) / Price
         max_qty = (usdt_balance * self.leverage * 0.95) / price
         return max_qty
+
+    def get_balance(self):
+        try:
+            account = self.client.account()
+            usdt_balance = float(
+                next((item for item in account['assets'] if item['asset'] == 'USDT'), None)['walletBalance'])
+            return usdt_balance
+        except Exception as e:
+            print(f"Error getting balance: {e}")
+            return 10000.0
 
 
     def get_current_state(self):

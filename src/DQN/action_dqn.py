@@ -20,7 +20,7 @@ class ActionDQN:
                 executed = True
             elif current_pos == -1:
                 new_pos = 1
-                fee = self.fee_rate * 2
+                fee = self.fee_rate
                 executed = True
 
 
@@ -32,7 +32,7 @@ class ActionDQN:
                 executed = True
             elif current_pos == 1:  # Long -> Short (Đảo chiều)
                 new_pos = -1
-                fee = self.fee_rate * 2  # Phí đóng Long + Phí mở Short
+                fee = self.fee_rate  # Phí tính trên 1 đơn vị, env.py sẽ nhân với delta_pos
                 executed = True
             # Nếu đang Short (-1) -> Giữ nguyên
 
