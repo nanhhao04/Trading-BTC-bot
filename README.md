@@ -104,4 +104,8 @@ Chạy giao diện giám sát Bot Trading:
 ```bash
 uvicorn dashboard.server:app --reload
 ```
-vào localhost: http://127.0.0.1:8000/
+Vào localhost: http://127.0.0.1:8000/
+
+#### 🖥️ Giao diện Giám sát thời gian thực (Real-time Dashboard)
+![Giao diện Dashboard](backtest_results/dashboard.png)
+*Hình 3: Giao diện web trực quan hiển thị số dư tài sản ròng, vị thế hiện tại, lịch sử số dư (Equity Curve) và nhật ký giao dịch (Live Logs) thời gian thực.*
