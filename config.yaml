@@ -40,19 +40,6 @@ reward:
     noise_threshold: 0.001
 
   5m:
-    # ── v8 FINAL: std-based hold_time calibration ───────────────────────
-    # Tu analysis (std-based metric):
-    #   step_std/bar  (Long 0.8) = 0.0303 (scaled)
-    #   realized_std  (Long 0.8) = 1.2242 (scaled, alpha=60)
-    #   realized_unit = 1.2242/60 = 0.02040 per alpha
-    #   hold_time = alpha * 0.02040 / 0.0303
-    #   => alpha=10 -> hold_time = 10*0.02040/0.0303 = 6.7 bars OK 5-10
-    #   => alpha=60 -> hold_time = 40.5 bars (TOO LONG)
-    # fee_factor=3.0: fee_per_trade = 0.8*0.0005*0.05*3*500 = 0.03
-    #                 realized(0.15%,p=0.8) = 10*0.0015*0.8*0.05*500 = 0.30
-    #                 realized/fee = 10x OK
-    # flat_penalty=0.00003: -0.015/bar ~ 0.5*step_std/bar (enough to push)
-    # ──────────────────────────────────────────────────────────────────────
     scaling: 500.0
     alpha: 15.0                 # v11: Giam nhe de bot kén chon hon
     beta: 0.05
