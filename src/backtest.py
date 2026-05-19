@@ -153,9 +153,6 @@ def load_backtest_data(timeframe: str, data_path: str = None) -> tuple:
     return df_full, df_state
 
 
-# ===================================================================
-#  CORE BACKTEST RUNNER
-# ===================================================================
 def run_backtest(model, cfg: dict, df_full: pd.DataFrame, df_state: pd.DataFrame,
                  label: str, reward_cfg: dict = None) -> tuple:
     """
@@ -195,8 +192,6 @@ def run_backtest(model, cfg: dict, df_full: pd.DataFrame, df_state: pd.DataFrame
     step = 0
 
     while not done:
-        # Adapt observation to model's expected input shape (pad/truncate) to avoid
-        # ValueError from stable-baselines when env obs dim != trained policy obs dim.
         obs_for_pred = obs
         expected_dim = None
         # Try common attributes to find expected observation dimension
@@ -271,7 +266,6 @@ def run_backtest(model, cfg: dict, df_full: pd.DataFrame, df_state: pd.DataFrame
         prev_net_worth = net_worth
         prev_price     = current_price
 
-        # ---- Phat hien giao dich da dong ----
         # ---- Phat hien giao dich da dong hoac dao chieu ----
         if abs(prev_pos) > 0.05 and entry_price is not None:
             # Dong lenh neu vi the moi tro ve Flat, hoac vi the moi dao chieu (Long -> Short hoac Short -> Long)

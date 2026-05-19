@@ -1,13 +1,13 @@
 project_name: "Bitcoin_RL_Trader"
-model_type: "DQN"  # Chọn: "PPO" hoặc "DQN"
+model_type: "DQN"
 seed: 42
 leverage: 10
-max_capital_usage: 0.02   # reward_multiplier = leverage * max_capital_usage = 10 * 0.02 = 0.2
+max_capital_usage: 0.02
 symbol: "BTCUSDT"
 timeframes: "1h"
 
 system:
-  device: "cpu"  # Chọn: "cuda" (GPU), "cpu", hoặc "auto"
+  device: "cpu"
   n_envs: 4
 
 paths:
@@ -18,35 +18,32 @@ paths:
   dqn_dir: "../model/DQN_1h_Bitcoin_RL_Trader/final_model.zip"
   logs_dir: "../tensorboard_logs"
 
-
 env:
   initial_balance: 10000
-  fee_rate: 0.0004       # 1h: 4 bps (Realistic Futures Taker Fee)
-  window_size: 90         # 1h: ~90 nến ≈ 3.75 ngày lookback
-  max_episode_steps: 500  # 500 bars = ~21 ngày 1h mỗi episode
-
-# --- REWARD PARAMS (RewardHandler v2) ---
+  fee_rate: 0.0004
+  window_size: 90
+  max_episode_steps: 500
 
 reward:
   15m:
-    scaling: 15.0          
-    alpha: 1.5             
-    beta: 0.12            
+    scaling: 15.0
+    alpha: 1.5
+    beta: 0.12
     holding_penalty: 0.0003
-    dd_threshold: 0.05    
-    clip_low: -1.5         
+    dd_threshold: 0.05
+    clip_low: -1.5
     clip_high: 1.5
     stop_loss_pct: 0.008
     noise_threshold: 0.001
 
   5m:
     scaling: 500.0
-    alpha: 15.0                 # v11: Giam nhe de bot kén chon hon
+    alpha: 15.0
     beta: 0.05
-    holding_penalty: 0.00001    # v11: Tang 4x de giam hold time
-    flat_penalty: 0.00001       # v11: Giam manh de cho phep dung ngoai
-    fee_penalty_factor: 2.0     # v11: Tang de giam overtrade/flip
-    active_bonus_rate: 0.0      # v11: Loai bo bias giu vi the
+    holding_penalty: 0.00001
+    flat_penalty: 0.00001
+    fee_penalty_factor: 2.0
+    active_bonus_rate: 0.0
     fee_rate_hold_per_12h: 0.0001
     holding_fee_period: 144
     dd_threshold: 0.05
@@ -56,57 +53,46 @@ reward:
     liquidation_penalty: -10.0
 
   1h:
-    # R(t) = r(t)*A(t)*multiplier - |ΔA|*C*multiplier [cùng account-level]
-    # Sau đó nhân scaling để khuếch đại tín hiệu cho PPO Value Network
-    transaction_cost: 0.0002          # 3 bps — phí reward signal (phạt nặng overtrading để giảm số lệnh)
-    scaling: 150.0                    # Khuếch đại reward: log_ret*0.2≈0.0004 → ×150 ≈ 0.06/bar (đủ mạnh)
-    clip_low: -1.5                    # Mở rộng clip range để chứa reward sau scaling
-    clip_high: 1.5                    # Mở rộng clip range để chứa reward sau scaling
-    # Funding fee: luôn âm, buộc agent đóng lệnh thay vì ôm mãi
-    # 1 bps/8h = 3 bps/ngày = 0.03%/ngày (Binance Futures funding rate chuẩn)
-    funding_rate: 0.0001              # 1 bps / funding_period (chuẩn sàn Futures)
-    funding_period: 8                 # 8h thu phí một lần (chuẩn sàn Futures)
-    # Short-bonus: khích lệu short trong uptrend để cân bằng long-bias
-    short_bonus_when_longtrend: 0.00002  # reduce từ 0.0001 (was too strong)
-    terminal_loss_threshold: 0.30     # Keep this
-    terminal_loss_penalty: -0.5       # Keep this
-    terminal_profit_multiplier: 0.5   # Keep this
-    terminal_loss_multiplier: -0.2    # Keep this
+    transaction_cost: 0.0002
+    scaling: 150.0
+    clip_low: -1.5
+    clip_high: 1.5
+    funding_rate: 0.0001
+    funding_period: 8
+    short_bonus_when_longtrend: 0.00002
+    terminal_loss_threshold: 0.30
+    terminal_loss_penalty: -0.5
+    terminal_profit_multiplier: 0.5
+    terminal_loss_multiplier: -0.2
 
-
-
-
-# --- HYPERPARAMETERS CHO PPO ---
 ppo_params:
   policy: "MlpPolicy"
   learning_rate: 0.0001
-  n_steps: 2048              # 4096 → 2048: episode ngắn 500 bars, rollout nhỏ hơn phù hợp
+  n_steps: 2048
   batch_size: 256
   n_epochs: 5
-  gamma: 0.97               # 0.995 → 0.97: horizon ngắn hơn, focus immediate reward
+  gamma: 0.97
   gae_lambda: 0.95
   clip_range: 0.2
-  ent_coef: 0.01            # 0.005 → 0.01: khích lệu exploration hơn (agent cần thử action)
+  ent_coef: 0.01
   verbose: 1
 
-# HYPERPARAMETERS CHO DQN
 dqn_params:
   fixed_qty: 0.05
   policy: "MlpPolicy"
   learning_rate: 0.0001
-  buffer_size: 100000    # Bộ nhớ replay buffer
-  learning_starts: 1000  # Số bước random lúc đầu để lấp đầy buffer
+  buffer_size: 100000
+  learning_starts: 1000
   batch_size: 128
   tau: 1.0
-  gamma: 0.97            # giảm từ 0.99 xuống 0.97 để tập trung vào xu hướng rõ ràng, tránh bắt nhiễu ngắn hạn
+  gamma: 0.97
   train_freq: 4
   gradient_steps: 1
-  target_update_interval: 2000  # tăng từ 1000 lên 2000 để làm mượt mục tiêu học Q-value, giảm hành vi nhấp nháy vào lệnh
+  target_update_interval: 2000
   exploration_fraction: 0.1
   exploration_final_eps: 0.05
   verbose: 1
 
-
 training:
   total_timesteps: 500000
-  save_interval: 50000   # Lưu model sau mỗi
+  save_interval: 50000

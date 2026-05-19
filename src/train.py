@@ -127,7 +127,7 @@ def main():
     abs_models_dir = os.path.normpath(os.path.join(project_root, 'model'))
     save_dir = os.path.join(abs_models_dir, f"{model_type}_{cfg['timeframes']}_{cfg['project_name']}")
 
-    # 5. Callback & Train
+    # Setup Tensorboard logs path
     abs_logs_dir = os.path.normpath(os.path.join(project_root, 'tensorboard_logs'))
     
     if model_type == "PPO":
